@@ -69,6 +69,18 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
   try {
     console.log('Calling OpenRouter API with model:', modelId);
     
+    // Check if API key exists and is valid
+    if (!OPENROUTER_API_KEY) {
+      console.error('No OpenRouter API key provided');
+      throw new Error('OpenRouter API key not configured. Please add your API key in settings.');
+    }
+    
+    // Validate API key format
+    if (OPENROUTER_API_KEY && !OPENROUTER_API_KEY.startsWith('sk-or-')) {
+      console.error('OpenRouter API key format appears invalid');
+      throw new Error('OpenRouter API key format appears invalid. Keys should start with "sk-or-"');
+    }
+    
     // Configuration des headers de base
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -164,6 +176,17 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
     // Handle different response formats more gracefully
     if (!response.data.choices || !response.data.choices.length) {
       console.error('Non-standard OpenRouter response format:', JSON.stringify(response.data).substring(0, 500));
+      
+      // Check if the response contains an error message from OpenRouter
+      if (response.data.error) {
+        // Extract the error message
+        const errorMessage = typeof response.data.error === 'string' 
+          ? response.data.error 
+          : (response.data.error.message || 'Unknown error from OpenRouter');
+        
+        console.error('OpenRouter returned an error:', errorMessage, 'Response keys:', Object.keys(response.data).join(', '));
+        throw new Error(`OpenRouter API error: ${errorMessage}`);
+      }
       
       // Try to extract message content from different possible response structures
       if (response.data.message?.content) {
