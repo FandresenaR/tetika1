@@ -894,7 +894,7 @@ const Footer: React.FC<{ theme: 'dark' | 'light' }> = ({ theme }) => {
           href="/cgu" 
           className={`hover:underline ${theme === 'dark' ? 'text-gray-400 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}
         >
-          Conditions générales d'utilisation
+          Conditions générales d&apos;utilisation
         </a>
         
         <span className="hidden sm:inline">•</span>
