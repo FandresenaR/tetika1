@@ -523,7 +523,7 @@ const ChatInterface: React.FC = () => {
                 onClick={handleMobileMenuButtonClick}
                 className={`flex items-center justify-center p-1 rounded-md hover:bg-gray-800/20 transition-all duration-300
                   ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-800'}`}
-                title={showSidebar ? "Masquer l'historique" : "Afficher l'historique"}
+                title={showSidebar ? "Masquer l&apos;historique" : "Afficher l&apos;historique"}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path 

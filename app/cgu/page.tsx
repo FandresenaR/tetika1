@@ -50,82 +50,82 @@ export default function CGU() {
       </header>
 
       {/* Main content */}
-      <main className="max-w-4xl mx-auto p-4 py-8">
-        <h1 className="text-3xl font-bold mb-6">
+      <main className="max-w-4xl mx-auto p-3 sm:p-4 py-6 sm:py-8">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
-            Conditions Générales d'Utilisation
+            Conditions Générales d&apos;Utilisation
           </span>
         </h1>
 
-        <div className={`space-y-6 rounded-xl p-6 ${theme === 'dark' ? 'bg-gray-800/50' : 'bg-white'}`}>
-          <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-3">1. Présentation de l'application TETIKA</h2>
-            <p className="mb-3">
-              TETIKA est une interface de chat propulsée par l'intelligence artificielle qui permet aux utilisateurs d'interagir avec différents modèles de langage.
-              L'application est conçue pour offrir une expérience utilisateur fluide et intuitive tout en respectant la vie privée des utilisateurs.
+        <div className={`space-y-4 sm:space-y-6 rounded-xl p-4 sm:p-6 ${theme === 'dark' ? 'bg-gray-800/50' : 'bg-white'}`}>
+          <section className="mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">1. Présentation de l&apos;application TETIKA</h2>
+            <p className="mb-3 text-sm sm:text-base">
+              TETIKA est une interface de chat propulsée par l&apos;intelligence artificielle qui permet aux utilisateurs d&apos;interagir avec différents modèles de langage.
+              L&apos;application est conçue pour offrir une expérience utilisateur fluide et intuitive tout en respectant la vie privée des utilisateurs.
             </p>
-            <p>
-              Ces conditions générales d'utilisation s'appliquent à toute utilisation de l'application TETIKA. En utilisant notre service, vous acceptez de vous conformer à ces conditions.
+            <p className="text-sm sm:text-base">
+              Ces conditions générales d&apos;utilisation s&apos;appliquent à toute utilisation de l&apos;application TETIKA. En utilisant notre service, vous acceptez de vous conformer à ces conditions.
             </p>
           </section>
 
-          <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-3">2. Accès et Utilisation</h2>
-            <p className="mb-3">
-              L'accès à TETIKA nécessite la configuration d'une clé API personnelle. L'utilisateur est responsable de la sécurité de cette clé.
+          <section className="mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">2. Accès et Utilisation</h2>
+            <p className="mb-3 text-sm sm:text-base">
+              L&apos;accès à TETIKA nécessite la configuration d&apos;une clé API personnelle. L&apos;utilisateur est responsable de la sécurité de cette clé.
             </p>
-            <p className="mb-3">
+            <p className="mb-3 text-sm sm:text-base">
               Vous vous engagez à ne pas utiliser TETIKA à des fins illégales ou interdites par les présentes conditions. Vous acceptez notamment de ne pas :
             </p>
-            <ul className="list-disc ml-6 space-y-1 mb-3">
-              <li>Utiliser l'application pour violer toute loi applicable</li>
+            <ul className="list-disc ml-5 sm:ml-6 space-y-1 mb-3 text-sm sm:text-base">
+              <li>Utiliser l&apos;application pour violer toute loi applicable</li>
               <li>Tenter de nuire au bon fonctionnement du service</li>
-              <li>Collecter des informations sur d'autres utilisateurs sans leur consentement</li>
-              <li>Utiliser l'application pour générer du contenu illégal, offensant, diffamatoire ou préjudiciable</li>
+              <li>Collecter des informations sur d&apos;autres utilisateurs sans leur consentement</li>
+              <li>Utiliser l&apos;application pour générer du contenu illégal, offensant, diffamatoire ou préjudiciable</li>
             </ul>
           </section>
 
-          <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-3">3. Droits de Propriété Intellectuelle</h2>
-            <p className="mb-3">
-              L'application TETIKA, y compris son interface, son design, ses logos et son code source, est protégée par les droits de propriété intellectuelle. 
-              L'utilisation de l'application ne vous confère aucun droit de propriété intellectuelle sur le service ou son contenu.
+          <section className="mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">3. Droits de Propriété Intellectuelle</h2>
+            <p className="mb-3 text-sm sm:text-base">
+              L&apos;application TETIKA, y compris son interface, son design, ses logos et son code source, est protégée par les droits de propriété intellectuelle. 
+              L&apos;utilisation de l&apos;application ne vous confère aucun droit de propriété intellectuelle sur le service ou son contenu.
             </p>
-            <p>
-              Le contenu généré par les utilisateurs via l'application reste leur propriété, sous réserve des droits accordés aux modèles d'IA utilisés pour générer ce contenu.
+            <p className="text-sm sm:text-base">
+              Le contenu généré par les utilisateurs via l&apos;application reste leur propriété, sous réserve des droits accordés aux modèles d&apos;IA utilisés pour générer ce contenu.
             </p>
           </section>
 
-          <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-3">4. Responsabilité</h2>
-            <p className="mb-3">
-              TETIKA est proposé "tel quel" sans garantie d'aucune sorte. Nous ne garantissons pas que l'application répondra à vos besoins spécifiques ou que son fonctionnement sera ininterrompu, sécurisé ou exempt d'erreurs.
+          <section className="mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">4. Responsabilité</h2>
+            <p className="mb-3 text-sm sm:text-base">
+              TETIKA est proposé &quot;tel quel&quot; sans garantie d&apos;aucune sorte. Nous ne garantissons pas que l&apos;application répondra à vos besoins spécifiques ou que son fonctionnement sera ininterrompu, sécurisé ou exempt d&apos;erreurs.
             </p>
-            <p className="mb-3">
-              L'utilisateur est seul responsable du contenu qu'il génère via l'application ainsi que de l'utilisation qu'il en fait.
+            <p className="mb-3 text-sm sm:text-base">
+              L&apos;utilisateur est seul responsable du contenu qu&apos;il génère via l&apos;application ainsi que de l&apos;utilisation qu&apos;il en fait.
             </p>
-            <p>
+            <p className="text-sm sm:text-base">
               Nous ne serons pas responsables des dommages directs, indirects, spéciaux, consécutifs ou punitifs résultant de votre utilisation ou de votre incapacité à utiliser TETIKA.
             </p>
           </section>
 
-          <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-3">5. Modifications des Conditions</h2>
-            <p>
+          <section className="mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">5. Modifications des Conditions</h2>
+            <p className="text-sm sm:text-base">
               Nous nous réservons le droit de modifier ces conditions générales à tout moment. Les modifications entreront en vigueur dès leur publication. 
-              Votre utilisation continue de l'application après la publication des modifications constitue votre acceptation de ces modifications.
+              Votre utilisation continue de l&apos;application après la publication des modifications constitue votre acceptation de ces modifications.
             </p>
           </section>
 
-          <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-3">6. Loi Applicable</h2>
-            <p>
+          <section className="mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-2 sm:mb-3">6. Loi Applicable</h2>
+            <p className="text-sm sm:text-base">
               Les présentes conditions sont régies et interprétées conformément aux lois en vigueur, sans égard aux principes de conflits de lois.
             </p>
           </section>
         </div>
 
-        <p className="mt-8 text-center text-sm opacity-70">
+        <p className="mt-6 sm:mt-8 text-center text-xs sm:text-sm opacity-70">
           Dernière mise à jour : 8 mai 2025
         </p>
       </main>
