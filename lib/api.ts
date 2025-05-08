@@ -149,7 +149,10 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       hasData: !!response.data,
       hasChoices: !!response.data?.choices,
       choicesLength: response.data?.choices?.length,
-      firstChoice: response.data?.choices?.[0] ? 'present' : 'missing'
+      firstChoice: response.data?.choices?.[0] ? 'present' : 'missing',
+      // Add more detailed debug info
+      dataKeys: response.data ? Object.keys(response.data) : [],
+      responseContentType: response.headers['content-type'],
     });
     
     // Enhanced validation for response data
@@ -160,22 +163,52 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
     
     // Handle different response formats more gracefully
     if (!response.data.choices || !response.data.choices.length) {
-      console.warn('Non-standard OpenRouter response format:', JSON.stringify(response.data).substring(0, 200));
+      console.error('Non-standard OpenRouter response format:', JSON.stringify(response.data).substring(0, 500));
       
       // Try to extract message content from different possible response structures
-      if (response.data.message || response.data.content) {
+      if (response.data.message?.content) {
         // Create a synthetic response that matches expected format
         return {
           choices: [{
             message: {
-              content: response.data.message || response.data.content || "OpenRouter responded in an unexpected format"
+              content: response.data.message.content
+            }
+          }]
+        };
+      } 
+      // Check for completion/text fields which some API versions might use
+      else if (response.data.completion || response.data.text) {
+        return {
+          choices: [{
+            message: {
+              content: response.data.completion || response.data.text
+            }
+          }]
+        };
+      }
+      // Check if the entire response might be the message itself
+      else if (typeof response.data === 'string') {
+        return {
+          choices: [{
+            message: {
+              content: response.data
+            }
+          }]
+        };
+      }
+      // Check if there's an object with content directly
+      else if (response.data.content) {
+        return {
+          choices: [{
+            message: {
+              content: response.data.content
             }
           }]
         };
       }
       
       // If there's a response but no usable message content
-      throw new Error('Invalid response format from OpenRouter: Missing choices array');
+      throw new Error(`Invalid response format from OpenRouter: Missing choices array. Response keys: ${Object.keys(response.data).join(', ')}`);
     }
     
     return response.data;
