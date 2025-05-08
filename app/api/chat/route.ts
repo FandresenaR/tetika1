@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Message } from '@/types';
+import { Message, ChatMode } from '@/types';
 import { callAIModel } from '@/lib/api';
 import { enhanceWithRAG } from '@/lib/rag-helper';
 
@@ -9,6 +9,25 @@ interface Source {
   snippet: string;
   position: number;
 }
+
+// Define types for message content parts
+interface TextContent {
+  type: 'text';
+  text: string;
+}
+
+interface ImageContent {
+  type: 'image_url' | 'image';
+  image_url?: {
+    url: string;
+  };
+  // Add other image-related properties as needed
+}
+
+type ContentPart = TextContent | ImageContent;
+
+// Helper function to generate a unique ID
+const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,17 +57,17 @@ export async function POST(request: NextRequest) {
     
     // Si le modèle ne supporte pas la vision mais que nous avons des messages avec des images
     // en format base64, convertir ces messages en texte simple
-    const processedMessages = messages.map((msg: any) => {
+    const processedMessages = messages.map((msg: Message & { content: string | ContentPart[] }) => {
       // Si le message est un tableau (contient des structures multimodales) et le modèle ne supporte pas vision
       if (Array.isArray(msg.content) && !supportsVision) {
         // Convertir le message multimodal en texte uniquement
         const textParts = msg.content
-          .filter((part: any) => part.type === 'text')
-          .map((part: any) => part.text)
+          .filter((part: ContentPart) => part.type === 'text')
+          .map((part: TextContent) => part.text)
           .join('\n\n');
         
         // Indiquer qu'il y avait des images qui ne peuvent pas être traitées
-        const hasImageParts = msg.content.some((part: any) => 
+        const hasImageParts = msg.content.some((part: ContentPart) => 
           part.type === 'image_url' || part.type === 'image');
         
         const imageNotice = hasImageParts 
@@ -101,13 +120,16 @@ export async function POST(request: NextRequest) {
         
         if (lastUserMessageIndex !== -1) {
           // Create a system message with the search results to insert before the last user message
-          const systemMessage = {
+          const systemMessage: Message & { content: string | ContentPart[] } = {
+            id: generateId(),
             role: 'system',
             content: `I'm providing you with recent web search results related to the user's query. 
 Please incorporate this information in your response and cite sources when appropriate using [1], [2], etc.
 
 Web search results:
-${ragContext}`
+${ragContext}`,
+            timestamp: Date.now(),
+            mode: 'rag' as ChatMode
           };
           
           // Insert the system message before the last user message
@@ -127,7 +149,7 @@ ${ragContext}`
       // Déterminer si le fichier joint est une image en base64
       const hasImageContent = messagesForAI.some(msg => 
         Array.isArray(msg.content) && 
-        msg.content.some((part: any) => part.type === 'image_url' || part.type === 'image')
+        msg.content.some((part: ContentPart) => part.type === 'image_url' || part.type === 'image')
       );
       
       // Ajouter une instruction spécifique au type de fichier
@@ -138,8 +160,11 @@ ${ragContext}`
       // Ajouter une instruction au début des messages pour l'IA
       if (!messagesForAI.some(msg => msg.role === 'system' && msg.content.includes('L\'utilisateur a joint'))) {
         messagesForAI.unshift({
+          id: generateId(),
           role: 'system',
-          content: fileTypeMessage
+          content: fileTypeMessage,
+          timestamp: Date.now(),
+          mode: mode as ChatMode
         });
       }
     }
