@@ -275,83 +275,59 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
   }
 }
 
-// API NotDiamond - Implémentation alternative
+// API NotDiamond - Implémentation avec fallback vers OpenRouter
 export async function callNotDiamondAPI(modelId: string, messages: Message[], stream = false) {
-  const { notdiamond: NOTDIAMOND_API_KEY } = getApiKeys();
+  const { notdiamond: NOTDIAMOND_API_KEY, openrouter: OPENROUTER_API_KEY } = getApiKeys();
   
   if (!NOTDIAMOND_API_KEY) {
     throw new Error('NotDiamond API key not configured');
   }
   
-  // Mapping des modèles avec leur formatage correct
-  const modelMapping: {[key: string]: {id: string, provider: string}} = {
-    'gpt-4-turbo': { id: 'gpt-4-1106-preview', provider: 'openai' }, // Updated model ID
-    'claude-3-opus': { id: 'claude-3-opus-20240229', provider: 'anthropic' },
-    'claude-3-sonnet': { id: 'claude-3-sonnet-20240229', provider: 'anthropic' },
-    'perplexity': { id: 'sonar-medium-online', provider: 'perplexity' },
+  // Mapping des modèles NotDiamond vers leurs équivalents OpenRouter (si disponible)
+  const openrouterFallbackMapping: {[key: string]: string} = {
+    'gpt-4-turbo': 'openai/gpt-4-turbo',
+    'claude-3-opus': 'anthropic/claude-3-opus',
+    'claude-3-sonnet': 'anthropic/claude-3-sonnet',
+    'perplexity': 'perplexity/sonar-medium-online',
   };
   
-  // Utiliser le mapping ou définir des valeurs par défaut
-  const modelInfo = modelMapping[modelId] || { id: modelId, provider: 'openai' };
-  
   try {
-    console.log('Calling NotDiamond API with model:', modelInfo.id, 'provider:', modelInfo.provider);
+    console.log('NOT Diamond API service is currently experiencing issues');
     
-    // Utilisation d'une instance axios personnalisée pour éviter les problèmes CORS
-    const instance = axios.create({
-      baseURL: 'https://api.notai.io/api/v1', // Updated URL with /api prefix
-      timeout: 60000, // Augmentation du timeout à 60 secondes
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${NOTDIAMOND_API_KEY}`,
-        'User-Agent': 'Mozilla/5.0 TetikaChatApp/1.0',
-        'Accept': 'application/json'
-      },
-    });
-
-    // Préparation de la requête
-    const payload = {
-      model: modelInfo.id,
-      provider: modelInfo.provider,
-      messages: formatMessagesForAPI(messages),
-      stream: stream,
-      max_tokens: 1000,
-      temperature: 0.7,
-    };
-    
-    console.log('NotDiamond payload:', JSON.stringify(payload).slice(0, 200) + '...');
-    
-    try {
-      const response = await instance.post('/chat/completions', payload);
-      console.log('NotDiamond API response success');
-      return response.data;
-    } catch (directError: unknown) {
-      const axiosError = directError as AxiosError;
-      console.error('NotDiamond API error:', axiosError.response?.status, axiosError.response?.data || (directError as Error).message);
+    // Si OpenRouter API key est disponible, tentative de fallback
+    if (OPENROUTER_API_KEY && openrouterFallbackMapping[modelId]) {
+      const fallbackModelId = openrouterFallbackMapping[modelId];
+      console.log(`Falling back to OpenRouter with equivalent model: ${fallbackModelId}`);
       
-      // Si l'erreur est 403, c'est probablement un problème d'authentification
-      if (axiosError.response?.status === 403) {
-        throw new Error('Access denied to NotDiamond API. Please verify your API key is correct and active.');
+      try {
+        // Appel à OpenRouter avec le modèle équivalent
+        const openRouterResponse = await callOpenRouterAPI(fallbackModelId, messages, stream);
+        console.log('Successfully used OpenRouter as fallback');
+        
+        // Ajouter une note dans la réponse pour informer l'utilisateur du fallback
+        if (openRouterResponse?.choices?.[0]?.message?.content) {
+          const originalContent = openRouterResponse.choices[0].message.content;
+          openRouterResponse.choices[0].message.content = 
+            `[Note: Le service NOT Diamond n'est pas disponible actuellement. Cette réponse a été générée par un modèle équivalent sur OpenRouter]\n\n${originalContent}`;
+        }
+        
+        return openRouterResponse;
+      } catch (fallbackError) {
+        console.error('OpenRouter fallback also failed:', (fallbackError as Error).message);
+        throw new Error(`Le service NOT Diamond n'est pas disponible actuellement et le fallback vers OpenRouter a également échoué. Erreur: ${(fallbackError as Error).message}`);
       }
-      
-      // Fallback à une autre approche si l'API échoue pour d'autres raisons
-      throw new Error(`NotDiamond API error: ${(axiosError.response?.data as Record<string, { message?: string }>)?.error?.message || (directError as Error).message}`);
     }
+    
+    // Si pas de clé OpenRouter ou pas de modèle équivalent, afficher un message informatif
+    throw new Error(
+      "Le service NOT Diamond est temporairement indisponible. " +
+      "Notre équipe est au courant du problème et travaille à le résoudre. " +
+      "Veuillez essayer d'utiliser les modèles OpenRouter disponibles dans l'application en attendant que le service soit rétabli."
+    );
+    
   } catch (error: unknown) {
-    console.error('Error calling NotDiamond API:', error);
-    
-    // Message d'erreur plus explicite
-    const axiosError = error as AxiosError;
-    const errorMessage = axiosError.response?.data && 
-      typeof axiosError.response.data === 'object' && 
-      'error' in axiosError.response.data && 
-      axiosError.response.data.error && 
-      typeof axiosError.response.data.error === 'object' && 
-      'message' in (axiosError.response.data.error as Record<string, unknown>)
-        ? ((axiosError.response.data.error as Record<string, string>).message)
-        : (error as Error).message || 'Unknown error';
-    
-    throw new Error(`NotDiamond API error: ${errorMessage}. Please try OpenRouter models as an alternative.`);
+    console.error('Error with NOT Diamond API or fallback:', error);
+    throw new Error(`${(error as Error).message}`);
   }
 }
 
