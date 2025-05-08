@@ -24,9 +24,9 @@ export async function searchWithSerpApi(query: string, apiKey: string) {
       // Client-side: Use window.location.origin
       apiUrl = new URL('/api/search', window.location.origin).toString();
     } else {
-      // Server-side: Use an absolute URL with the local API route
-      // In Next.js API routes, we need to make requests to our own API differently
-      apiUrl = 'http://localhost:3000/api/search';
+      // Server-side: Use direct API call to SerpAPI instead of going through our own proxy
+      // This avoids the self-request issue in production
+      return await callSerpApiDirectly(query, apiKey);
     }
       
     console.log(`Making request to SerpAPI proxy at: ${apiUrl}`);
@@ -65,5 +65,50 @@ export async function searchWithSerpApi(query: string, apiKey: string) {
         error_details: error
       }
     };
+  }
+}
+
+/**
+ * Makes a direct call to SerpAPI without going through our proxy
+ * This is used server-side to avoid self-reference issues
+ */
+async function callSerpApiDirectly(query: string, apiKey: string) {
+  try {
+    console.log('Making direct request to SerpAPI (server-side)');
+    
+    // Build the SerpAPI request URL with parameters
+    const params = new URLSearchParams({
+      q: query,
+      api_key: apiKey,
+      engine: 'google',
+      gl: 'fr',
+      hl: 'fr',
+      num: '5'
+    });
+    
+    const serpApiUrl = `https://serpapi.com/search?${params.toString()}`;
+    
+    // Make the request
+    const response = await fetch(serpApiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'TetikaChatApp/1.0 Server'
+      },
+      // Add timeout handling if needed
+      signal: AbortSignal.timeout(25000)
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `SerpAPI responded with ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log(`Direct SerpAPI call: ${data?.organic_results?.length || 0} results found`);
+    return data;
+  } catch (error: unknown) {
+    console.error('Error in direct SerpAPI call:', error);
+    throw error; // Let the main function handle the error response
   }
 }
