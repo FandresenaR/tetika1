@@ -81,6 +81,12 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     onToggleCollapse();
   };
   
+  // Fonction pour journaliser et gérer le clic sur le bouton toggle
+  const handleToggleClick = () => {
+    console.log('Bouton toggle cliqué dans HistorySidebar. État actuel:', isCollapsed);
+    onToggleCollapse();
+  };
+
   return (
     <>
       {/* Overlay de fond pour mobile - apparaît uniquement quand la sidebar est ouverte sur mobile */}
@@ -127,25 +133,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
               </svg>
             </button>
           ) : (
-            <button
-              onClick={onToggleCollapse}
-              className={`p-1.5 rounded-md transition-all duration-300 ${
-                theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-gray-800'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-              }`}
-              title={isCollapsed ? "Développer" : "Réduire"}
-            >
-              {isCollapsed ? (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                </svg>
-              )}
-            </button>
+            <></>
           )}
         </div>
         

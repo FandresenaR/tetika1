@@ -50,11 +50,6 @@ const ChatInterface: React.FC = () => {
     const checkIfMobile = () => {
       const isMobileView = window.innerWidth < 768; // 768px est le breakpoint md de tailwind
       setIsMobile(isMobileView);
-      
-      // Sur mobile, fermer automatiquement la sidebar lors du chargement initial
-      if (isMobileView) {
-        setIsSidebarCollapsed(true);
-      }
     };
     
     // Vérifier initialement
@@ -69,10 +64,16 @@ const ChatInterface: React.FC = () => {
     };
   }, []);
   
-  // Sur mobile, on collapse automatiquement la sidebar
+  // La sidebar sera toujours fixée à un état spécifique en fonction de l'appareil
   useEffect(() => {
     if (isMobile) {
+      // Sur mobile, sidebar toujours cachée par défaut jusqu'à ce qu'elle soit ouverte manuellement
       setIsSidebarCollapsed(true);
+      setShowSidebar(false);
+    } else {
+      // Sur desktop, sidebar toujours visible et non collapsée par défaut
+      setIsSidebarCollapsed(false);
+      setShowSidebar(true);
     }
   }, [isMobile]);
   
@@ -81,13 +82,16 @@ const ChatInterface: React.FC = () => {
     if (showCodeSidebar) {
       // Sauvegarder l'état actuel du sidebar gauche
       setPreviousSidebarState(isSidebarCollapsed);
-      // Collapser le sidebar gauche
-      setIsSidebarCollapsed(true);
+      
+      // Sur tout appareil, masquer la sidebar gauche quand le sidebar droit est ouvert
+      setShowSidebar(false);
     } else {
-      // Restaurer l'état précédent du sidebar gauche
-      setIsSidebarCollapsed(previousSidebarState);
+      // Sur desktop seulement, restaurer la sidebar gauche
+      if (!isMobile) {
+        setShowSidebar(true);
+      }
     }
-  }, [showCodeSidebar, isSidebarCollapsed, previousSidebarState]);
+  }, [showCodeSidebar, isSidebarCollapsed, previousSidebarState, isMobile]);
   
   // Fonction pour basculer le mode RAG
   const toggleRagMode = (enabled: boolean) => {
@@ -477,18 +481,6 @@ const ChatInterface: React.FC = () => {
     }
   };
 
-  const toggleSidebarCollapse = () => {
-    if (isMobile) {
-      // Sur mobile, on ferme la sidebar en modifiant les deux états
-      setIsSidebarCollapsed(true);
-      setShowSidebar(false); // Cacher complètement la sidebar sur mobile
-      console.log('Mobile sidebar closed via toggleSidebarCollapse');
-    } else {
-      // Sur desktop, on bascule seulement l'état de collapse
-      setIsSidebarCollapsed(!isSidebarCollapsed);
-    }
-  };
-
   const handleStartNewConversation = (mode: ChatMode) => {
     handleClearChat();
     // Force le démarrage d'une nouvelle conversation avec le mode sélectionné
@@ -639,9 +631,9 @@ const ChatInterface: React.FC = () => {
               onSelectConversation={handleSelectConversation}
               onCreateNewConversation={handleCreateNewConversation}
               onPurgeAllHistory={handlePurgeAllHistory}
+              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               theme={theme}
               isCollapsed={isSidebarCollapsed}
-              onToggleCollapse={toggleSidebarCollapse}
             />
           )}
           

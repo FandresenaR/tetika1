@@ -327,11 +327,11 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
 
   const processMessageContent = () => {
     if (!message.content) {
-      return <ReactMarkdown components={MarkdownComponents as Components}>{message.content || ''}</ReactMarkdown>;
+      return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content || ''}</ReactMarkdown>;
     }
 
     if (!message.sources || message.sources.length === 0) {
-      return <ReactMarkdown components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
+      return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
     }
 
     const createReferenceElement = (refNumber: string, index: number) => {
@@ -431,11 +431,24 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
 
   const MarkdownComponents = {
     p: ({ children, ...props }: PProps) => {
-      const hasCodeBlock = React.Children.toArray(children || []).some(
-        (child) => React.isValidElement(child) && child.type === CodeBlock
+      // Vérifier si le paragraphe contient des éléments non autorisés comme div ou pre
+      // Si oui, utiliser un div à la place d'un p pour éviter les erreurs d'hydratation
+      const hasBlockElements = React.Children.toArray(children || []).some(
+        (child) => {
+          if (React.isValidElement(child)) {
+            return child.type === 'code' || 
+                   child.type === CodeBlock || 
+                   child.type === 'div' || 
+                   child.type === 'pre';
+          }
+          if (typeof child === 'string') {
+            return child.includes('```');
+          }
+          return false;
+        }
       );
 
-      return hasCodeBlock ? (
+      return hasBlockElements ? (
         <div {...props}>{children}</div>
       ) : (
         <p {...props}>{children}</p>
@@ -447,14 +460,20 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       const language = match ? match[1] : '';
       const codeIndex = inline ? '-1' : `${Math.random().toString(36).substring(2, 11)}`;
 
-      return !inline ? (
-        <CodeBlock 
-          language={language}
-          value={String(children || '').replace(/\n$/, '')}
-          index={codeIndex}
-          theme={theme}
-        />
-      ) : (
+      // Ne pas utiliser l'élément div pour les blocs de code
+      // à la place, retourner directement le CodeBlock pour les non-inline
+      if (!inline) {
+        return (
+          <CodeBlock 
+            language={language}
+            value={String(children || '').replace(/\n$/, '')}
+            index={codeIndex}
+            theme={theme}
+          />
+        );
+      }
+      
+      return (
         <code className={`px-1.5 py-0.5 rounded font-mono text-sm
           ${theme === 'dark' 
             ? 'bg-gray-800/80 text-cyan-400 border border-gray-700/50' 
@@ -686,7 +705,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                             </svg>
                           ) : (
                             <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 012 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 012 2h2a2 2 0 002-2M8 5a 2 2 0 012-2h2a2 2 0 012 2" />
                             </svg>
                           )}
                         </button>
