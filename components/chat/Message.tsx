@@ -334,6 +334,16 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
     }
 
+    // Fonction pour déterminer si une ligne est uniquement une référence source
+    const isSourceReferenceLine = (line: string) => {
+      // Vérifie si la ligne contient uniquement une référence comme [1], [2], etc.
+      const onlyRefRegex = /^\s*\[(\d+)\]\s*$|^\s*\((\d+)\)\s*$|^\s*(\d+)⃣\s*$|^\s*(\d+)️⃣\s*$/;
+      // Vérifie si la ligne commence par "Source:", "Sources:", etc.
+      const sourceHeaderRegex = /^\s*sources?\s*:/i;
+      
+      return onlyRefRegex.test(line) || sourceHeaderRegex.test(line);
+    };
+
     const createReferenceElement = (refNumber: string, index: number) => {
       const numRef = parseInt(refNumber, 10);
       if (numRef > 0 && numRef <= (message.sources?.length || 0)) {
@@ -367,6 +377,11 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
 
     const paragraphs = message.content.split('\n');
     const processedParagraphs = paragraphs.map((paragraph, paragraphIndex) => {
+      // Ignorer les lignes qui sont uniquement des références sources
+      if (isSourceReferenceLine(paragraph)) {
+        return null;
+      }
+
       if (!paragraph.trim()) {
         return <p key={`empty-${paragraphIndex}`}>&nbsp;</p>;
       }
@@ -424,7 +439,9 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
           {elements}
         </div>
       );
-    });
+    })
+    // Filtrer les paragraphes null qui ont été ignorés
+    .filter(paragraph => paragraph !== null);
 
     return <div className="prose-content">{processedParagraphs}</div>;
   };
