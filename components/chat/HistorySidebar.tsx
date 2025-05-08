@@ -80,12 +80,6 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     // Sur mobile, nous voulons vraiment fermer la sidebar, pas juste la réduire
     onToggleCollapse();
   };
-  
-  // Fonction pour journaliser et gérer le clic sur le bouton toggle
-  const handleToggleClick = () => {
-    console.log('Bouton toggle cliqué dans HistorySidebar. État actuel:', isCollapsed);
-    onToggleCollapse();
-  };
 
   return (
     <>
