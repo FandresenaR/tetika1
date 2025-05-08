@@ -79,6 +79,8 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
     // Ajouter l'en-tête d'autorisation si une clé API est disponible
     if (OPENROUTER_API_KEY) {
       headers['Authorization'] = `Bearer ${OPENROUTER_API_KEY}`;
+    } else {
+      console.warn('No OpenRouter API key found. This may cause authentication issues.');
     }
     
     // Nettoyage et validation des messages
@@ -139,12 +141,41 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       timeout: 60000 // 60 secondes
     });
 
-    console.log('OpenRouter API response success');
+    console.log('OpenRouter API response status:', response.status);
     
-    // Vérifier que la réponse contient les champs attendus
-    if (!response.data || !response.data.choices || !response.data.choices.length) {
-      console.error('OpenRouter returned empty or invalid response:', response.data);
-      throw new Error('Invalid response format from OpenRouter');
+    // Log the response structure without sensitive information
+    console.log('OpenRouter response structure:', {
+      status: response.status,
+      hasData: !!response.data,
+      hasChoices: !!response.data?.choices,
+      choicesLength: response.data?.choices?.length,
+      firstChoice: response.data?.choices?.[0] ? 'present' : 'missing'
+    });
+    
+    // Enhanced validation for response data
+    if (!response.data) {
+      console.error('OpenRouter returned empty response');
+      throw new Error('Empty response from OpenRouter');
+    }
+    
+    // Handle different response formats more gracefully
+    if (!response.data.choices || !response.data.choices.length) {
+      console.warn('Non-standard OpenRouter response format:', JSON.stringify(response.data).substring(0, 200));
+      
+      // Try to extract message content from different possible response structures
+      if (response.data.message || response.data.content) {
+        // Create a synthetic response that matches expected format
+        return {
+          choices: [{
+            message: {
+              content: response.data.message || response.data.content || "OpenRouter responded in an unexpected format"
+            }
+          }]
+        };
+      }
+      
+      // If there's a response but no usable message content
+      throw new Error('Invalid response format from OpenRouter: Missing choices array');
     }
     
     return response.data;

@@ -171,7 +171,25 @@ ${ragContext}`,
     
     // Appeler le modèle d'IA avec le message enrichi
     const apiResponse = await callAIModel(model, messagesForAI);
-    const aiResponse = apiResponse.choices[0].message.content;
+    
+    // Extract the AI response content more safely
+    let aiResponse = "";
+    if (apiResponse?.choices?.[0]?.message?.content) {
+      // Standard OpenRouter/OpenAI format
+      aiResponse = apiResponse.choices[0].message.content;
+    } else if (apiResponse?.message?.content) {
+      // Alternative format some providers might use
+      aiResponse = apiResponse.message.content;
+    } else if (apiResponse?.content) {
+      // Simplest fallback
+      aiResponse = apiResponse.content;
+    } else if (typeof apiResponse === 'string') {
+      // For providers that might just return a string
+      aiResponse = apiResponse;
+    } else {
+      console.error("Unexpected API response format:", JSON.stringify(apiResponse).substring(0, 200));
+      throw new Error("Unable to parse AI response from the model provider");
+    }
     
     // Return the AI response with sources if in RAG mode
     return NextResponse.json({
