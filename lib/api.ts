@@ -143,15 +143,80 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       temperature: payload.temperature,
       max_tokens: payload.max_tokens
     });
-    
-    // Faire la requête en utilisant uniquement les options nécessaires
-    const response = await axios({
-      method: 'post',
-      url: 'https://openrouter.ai/api/v1/chat/completions',
-      headers: headers,
-      data: payload,
-      timeout: 60000 // 60 secondes
-    });
+      // Faire la requête en utilisant uniquement les options nécessaires
+    let response;
+    try {
+      response = await axios({
+        method: 'post',
+        url: 'https://openrouter.ai/api/v1/chat/completions',
+        headers: headers,
+        data: payload,
+        timeout: 60000, // 60 secondes
+        transformResponse: [(data) => {
+          // Prevent JSON parse errors by capturing the raw response
+          return { rawData: data };
+        }]
+      });      // Parse the response safely
+      let parsedData;
+      try {
+        if (response.data?.rawData) {
+          parsedData = JSON.parse(response.data.rawData);
+          response.data = parsedData;
+        }
+      } catch (parseError) {
+        console.error('Error parsing OpenRouter response:', parseError);
+        console.log('Raw response (partial):', response.data?.rawData?.substring(0, 500));
+        
+        // Try to extract content from the raw response
+        let content = null;
+        
+        if (typeof response.data?.rawData === 'string') {
+          // Look for content field in the raw string
+          const contentMatch = response.data.rawData.match(/"content"\s*:\s*"([^"]+)"/);
+          const deltaContentMatch = response.data.rawData.match(/"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/);
+          
+          if (contentMatch && contentMatch[1]) {
+            content = contentMatch[1];
+          } else if (deltaContentMatch && deltaContentMatch[1]) {
+            // Special handling for DeepSeek models that use delta.content format
+            content = deltaContentMatch[1];
+          }
+          
+          // If we still don't have content, try to repair truncated JSON
+          if (!content) {
+            try {
+              // Add closing brackets to potentially truncated JSON
+              let fixedJson = response.data.rawData;
+              if (!fixedJson.endsWith('}')) {
+                fixedJson += '"}}}]}';
+              }
+              const partialData = JSON.parse(fixedJson);
+              
+              // Try to extract content from various possible locations
+              if (partialData?.choices?.[0]?.message?.content) {
+                content = partialData.choices[0].message.content;
+              } else if (partialData?.choices?.[0]?.delta?.content) {
+                content = partialData.choices[0].delta.content;
+              }
+            } catch (repairError) {
+              console.error('Failed to repair truncated JSON:', repairError);
+            }
+          }
+        }
+        
+        // Return a synthetic response with whatever we could extract
+        response.data = {
+          choices: [{
+            message: {
+              content: content || "Erreur de communication avec le modèle. Réponse reçue mais incomplète."
+            }
+          }]
+        };
+      }
+    } catch (requestError) {
+      // Will be handled in the outer catch block
+      throw requestError;
+    }
 
     console.log('OpenRouter API response status:', response.status);
     
@@ -166,11 +231,16 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       dataKeys: response.data ? Object.keys(response.data) : [],
       responseContentType: response.headers['content-type'],
     });
-    
-    // Enhanced validation for response data
+      // Enhanced validation for response data
     if (!response.data) {
       console.error('OpenRouter returned empty response');
-      throw new Error('Empty response from OpenRouter');
+      return {
+        choices: [{
+          message: {
+            content: "Erreur: Réponse vide reçue du modèle."
+          }
+        }]
+      };
     }
     
     // Handle different response formats more gracefully
@@ -185,7 +255,14 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
           : (response.data.error.message || 'Unknown error from OpenRouter');
         
         console.error('OpenRouter returned an error:', errorMessage, 'Response keys:', Object.keys(response.data).join(', '));
-        throw new Error(`OpenRouter API error: ${errorMessage}`);
+        
+        return {
+          choices: [{
+            message: {
+              content: `Erreur du modèle: ${errorMessage}`
+            }
+          }]
+        };
       }
       
       // Try to extract message content from different possible response structures

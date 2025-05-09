@@ -13,6 +13,7 @@ interface ChatInputProps {
   onCancelFileUpload?: () => void;
   previousMessages?: Array<{ role: string; content: string }>;
   onInputFocus?: () => void; // Nouveau callback pour détecter quand l'utilisateur commence à taper
+  onStopGeneration?: () => void; // Callback pour arrêter la génération de réponses
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({ 
@@ -25,8 +26,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
   selectedFile,
   onCancelFileUpload,
   previousMessages = [],
-  onInputFocus
-}) => {
+  onInputFocus,
+  onStopGeneration
+})=> {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -43,12 +45,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
     return () => {
       window.removeEventListener('resize', checkIfMobile);
     };
-  }, []);
-  // Gérer les événements du clavier
+  }, []);  // Gérer les événements du clavier
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.addEventListener('focus', () => {
-        setShowSuggestions(true);
+        // Suggestions désactivées
+        setShowSuggestions(false);
         // Appeler le callback onInputFocus s'il est défini
         if (onInputFocus) {
           onInputFocus();
@@ -59,7 +61,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     
     return () => {
       if (textareaRef.current) {
-        textareaRef.current.removeEventListener('focus', () => setShowSuggestions(true));
+        textareaRef.current.removeEventListener('focus', () => setShowSuggestions(false));
         textareaRef.current.removeEventListener('blur', () => setShowSuggestions(false));
       }
     };
@@ -93,9 +95,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
       }
     }
   };
-  
-  const handleSuggestionClick = (suggestion: string) => {
-    setMessage(suggestion);
+    const handleSuggestionClick = (suggestion: string) => {
+    // Fonction désactivée - ne place plus les suggestions dans l'input
+    // setMessage(suggestion);
+    
     // Mettre le focus sur la zone de texte après avoir choisi une suggestion
     if (textareaRef.current) {
       textareaRef.current.focus();
@@ -193,16 +196,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
           : theme === 'dark'
             ? 'shadow-[0_0_10px_rgba(30,41,59,0.3)] border border-gray-700/80 bg-gray-900/80'
             : 'shadow-[0_0_10px_rgba(241,245,249,0.5)] border border-gray-200/80 bg-white/95'}`}>
-        
-        {/* Composant pour les suggestions intelligentes */}
-        <SmartSuggestions 
+          {/* Composant pour les suggestions intelligentes - désactivé */}
+        {/* <SmartSuggestions 
           inputText={message}
           onSuggestionClick={handleSuggestionClick}
           visible={showSuggestions && !loading}
           previousMessages={previousMessages}
           ragMode={ragMode}
-        />
-        
+        /> */}
         <button
           type="button"
           onClick={onFileUploadClick}
@@ -243,38 +244,45 @@ const ChatInput: React.FC<ChatInputProps> = ({
             </div>
           )}
         </div>
-        
-        <button
-          className={`h-auto self-stretch px-3 sm:px-4 flex items-center justify-center flex-shrink-0 transition-all duration-300 disabled:opacity-50 group
-            ${message.trim() && !loading 
-              ? selectedFile
-                ? `bg-gradient-to-br from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-white shadow-inner`
-                : ragMode
-                  ? `bg-gradient-to-br from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-inner`
-                  : `bg-gradient-to-br from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-inner`
-              : theme === 'dark'
-                ? 'bg-gray-800/90 text-gray-400 hover:bg-gray-700/90 hover:text-gray-300'
-                : 'bg-gray-100/90 text-gray-400 hover:bg-gray-200/90 hover:text-gray-500'}`}
-          onClick={handleSubmit}
-          disabled={loading || !message.trim()}
-          type="button"
-          aria-label="Envoyer"
-        >
           {loading ? (
-            <div className="flex items-center gap-1">
-              <div className={`w-1.5 h-1.5 ${theme === 'dark' ? 'bg-cyan-300' : 'bg-blue-300'} rounded-full animate-pulse`}></div>
-              <div className={`w-1.5 h-1.5 ${theme === 'dark' ? 'bg-cyan-300' : 'bg-blue-300'} rounded-full animate-pulse delay-150`}></div>
-              <div className={`w-1.5 h-1.5 ${theme === 'dark' ? 'bg-cyan-300' : 'bg-blue-300'} rounded-full animate-pulse delay-300`}></div>
-            </div>
-          ) : (
+          <button 
+            type="button"
+            onClick={onStopGeneration}
+            className={`h-auto self-stretch px-3 sm:px-4 flex items-center justify-center flex-shrink-0 transition-colors
+              ${theme === 'dark' 
+                ? 'bg-red-600/80 hover:bg-red-700 text-white' 
+                : 'bg-red-500 hover:bg-red-600 text-white'}`}
+            title="Arrêter la génération"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            className={`h-auto self-stretch px-3 sm:px-4 flex items-center justify-center flex-shrink-0 transition-all duration-300 disabled:opacity-50 group
+              ${message.trim() && !loading 
+                ? selectedFile
+                  ? `bg-gradient-to-br from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-white shadow-inner`
+                  : ragMode
+                    ? `bg-gradient-to-br from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-inner`
+                    : `bg-gradient-to-br from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-inner`
+                : theme === 'dark'
+                  ? 'bg-gray-800/90 text-gray-400 hover:bg-gray-700/90 hover:text-gray-300'
+                  : 'bg-gray-100/90 text-gray-400 hover:bg-gray-200/90 hover:text-gray-500'}`}
+            onClick={handleSubmit}
+            disabled={!message.trim()}
+            type="button"
+            aria-label="Envoyer"
+          >
             <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 sm:h-5 sm:w-5 transition-all duration-300 ${message.trim() && !loading ? 'transform group-hover:translate-x-1' : ''}`} viewBox="0 0 20 20" fill="currentColor">
               <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
             </svg>
-          )}
-          {message.trim() && !loading && ragMode && (
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-400 rounded-full animate-ping opacity-70"></span>
-          )}
-        </button>
+            {message.trim() && !loading && ragMode && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-400 rounded-full animate-ping opacity-70"></span>
+            )}
+          </button>
+        )}
       </div>
 
       <style jsx global>{`

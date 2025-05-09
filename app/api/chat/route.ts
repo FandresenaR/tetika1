@@ -244,27 +244,87 @@ ${ragContext}`,
         });
       }
     }
-    
-    // Appeler le modèle d'IA avec le message enrichi
+      // Appeler le modèle d'IA avec le message enrichi
     const apiResponse = await callAIModel(model, messagesForAI);
-    
-    // Extract the AI response content more safely
+      // Extract the AI response content more safely
     let aiResponse = "";
-    if (apiResponse?.choices?.[0]?.message?.content) {
-      // Standard OpenRouter/OpenAI format
-      aiResponse = apiResponse.choices[0].message.content;
-    } else if (apiResponse?.message?.content) {
-      // Alternative format some providers might use
-      aiResponse = apiResponse.message.content;
-    } else if (apiResponse?.content) {
-      // Simplest fallback
-      aiResponse = apiResponse.content;
-    } else if (typeof apiResponse === 'string') {
-      // For providers that might just return a string
-      aiResponse = apiResponse;
-    } else {
-      console.error("Unexpected API response format:", JSON.stringify(apiResponse).substring(0, 200));
-      throw new Error("Unable to parse AI response from the model provider");
+    try {
+      if (apiResponse?.choices?.[0]?.message?.content) {
+        // Standard OpenRouter/OpenAI format
+        aiResponse = apiResponse.choices[0].message.content;
+      } else if (apiResponse?.choices?.[0]?.delta?.content) {
+        // Format used in some streaming responses
+        aiResponse = apiResponse.choices[0].delta.content;
+      } else if (apiResponse?.choices?.[0]?.text) {
+        // Some APIs might use 'text' instead of 'message.content'
+        aiResponse = apiResponse.choices[0].text;      } else if (apiResponse?.message?.content) {
+        // Alternative format some providers might use
+        aiResponse = apiResponse.message.content;
+      } else if (apiResponse?.content) {
+        // Simplest fallback
+        aiResponse = apiResponse.content;
+      } else if (typeof apiResponse === 'string') {
+        // For providers that might just return a string
+        aiResponse = apiResponse;} else if (apiResponse === null || apiResponse === undefined) {
+        // Null or undefined response
+        console.error("Null or undefined API response");
+        aiResponse = "Je suis désolé, je n'ai pas pu obtenir une réponse du modèle. Veuillez réessayer.";
+      } else {
+        // Try to extract any text we can find in the response
+        let responseStr = '';
+        try {
+          responseStr = JSON.stringify(apiResponse);
+        } catch (jsonError) {
+          console.error("Failed to stringify API response:", jsonError);
+          responseStr = String(apiResponse);
+        }
+        
+        console.error("Unexpected API response format:", responseStr.substring(0, 200));
+        
+        // Try to extract the message from a potentially truncated response
+        // First, try to match any content in a standard format
+        const contentMatch = responseStr.match(/"content"\s*:\s*"([^"]+)"/);
+        const textMatch = responseStr.match(/"text"\s*:\s*"([^"]+)"/);
+        
+        // Check for finish_reason which often comes right after the message content
+        // This is especially relevant for deepseek-r1t-chimera model responses
+        const finishReasonMatch = responseStr.match(/"finish_reason"\s*:\s*"(\w+)"/);
+        const messageBeforeFinishReason = finishReasonMatch ? 
+          responseStr.split('"finish_reason"')[0] : '';
+        
+        const deepseekMatch = messageBeforeFinishReason.match(/"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/);
+        
+        if (contentMatch?.[1]) {
+          aiResponse = contentMatch[1];
+          console.log("Salvaged content from partial response");
+        } else if (textMatch?.[1]) {
+          aiResponse = textMatch[1];
+          console.log("Salvaged text from partial response");
+        } else if (deepseekMatch?.[1]) {
+          aiResponse = deepseekMatch[1];
+          console.log("Salvaged content from DeepSeek model partial response");
+        } else {
+          // For deepseek-r1t-chimera model, try to extract message from any JSON structure
+          try {
+            // Try to extract message from potentially truncated JSON
+            const partialJson = responseStr.replace(/\}\s*$/, '}');
+            const parsedPartial = JSON.parse(partialJson);
+            
+            if (parsedPartial?.choices?.[0]?.delta?.content) {
+              aiResponse = parsedPartial.choices[0].delta.content;
+              console.log("Reconstructed content from partial JSON");
+            } else {
+              aiResponse = "Je suis désolé, il y a eu un problème avec le modèle d'intelligence artificielle. Veuillez réessayer.";
+            }
+          } catch (parseError) {
+            console.error("Failed to parse partial JSON:", parseError);
+            aiResponse = "Je suis désolé, il y a eu un problème avec le modèle d'intelligence artificielle. Veuillez réessayer.";
+          }
+        }
+      }
+    } catch (extractError) {
+      console.error("Error extracting AI response:", extractError);
+      aiResponse = "Une erreur s'est produite lors du traitement de la réponse. Veuillez réessayer.";
     }
       // Return the AI response with sources if in RAG mode
     return NextResponse.json({

@@ -1,6 +1,8 @@
-import React, { useState, createContext, ReactNode } from 'react';
+import React, { useState, createContext, ReactNode, useEffect } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import { Message as MessageType } from '@/types';
+import { speakText, stopSpeech, detectLanguage } from '@/lib/speech-utils';
+import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
 
 // Define the code sidebar context type
 interface CodeSidebarContextType {
@@ -26,26 +28,6 @@ type SourceType = {
   snippet: string;
   position?: number;
 };
-
-// Liste de suggestions de prompts RAG à afficher après une réponse en mode standard
-const ragSuggestions = [
-  {
-    text: "Pourrais-tu me fournir des données récentes sur ce sujet?",
-    description: "Obtiens des informations à jour depuis le web"
-  },
-  {
-    text: "Quelles sont les dernières actualités concernant ce domaine?",
-    description: "Recherche des informations récentes en ligne"
-  },
-  {
-    text: "Y a-t-il eu des développements significatifs sur ce sujet récemment?",
-    description: "Accède à des données actualisées pour compléter la réponse"
-  },
-  {
-    text: "Peux-tu enrichir cette réponse avec des sources externes?",
-    description: "Améliore la réponse avec des références vérifiables"
-  }
-];
 
 interface MessageProps {
   message: MessageType & { 
@@ -299,11 +281,16 @@ const getSourceUrl = (source: SourceType): string => {
   return source?.url || source?.link || '#';
 };
 
-export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onRegenerate, onRegenerateResponse, onSuggestionClick }) => {
+export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onRegenerate, onRegenerateResponse, onSuggestionClick }) => {  
   const [showSources, setShowSources] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);  
   const [isCopiedMessage, setIsCopiedMessage] = useState(false);
+  // New state for RAG suggestions
   const [showRagSuggestions, setShowRagSuggestions] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechLanguage, setSpeechLanguage] = useState<'fr-FR' | 'en-US' | null>(null);
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [forcedLanguage, setForcedLanguage] = useState<'fr-FR' | 'en-US' | null>(null);
   const isAI = message.role === 'assistant';
   const hasSources = message.sources && message.sources.length > 0;
   const isRagMode = message.mode === 'rag';
@@ -327,7 +314,6 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       }
     }
   };
-
   const handleRegenerate = () => {
     if (onRegenerate && message.id) {
       onRegenerate(message.id);
@@ -335,6 +321,78 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       onRegenerateResponse();
     }
   };
+  // Handle text-to-speech functionality
+  const handleSpeakMessage = () => {
+    if (isSpeaking) {
+      stopSpeech();
+      setIsSpeaking(false);
+      setSpeechLanguage(null);
+    } else {
+      if (message.content) {
+        // Use forced language or detect language before speaking
+        const langToUse = forcedLanguage || detectLanguage(message.content);
+        setSpeechLanguage(langToUse as 'fr-FR' | 'en-US');
+        
+        // Speak the text
+        speakText(message.content, langToUse);
+        setIsSpeaking(true);
+      }
+    }
+  };
+    // Function to change the forced language
+  const handleSetLanguage = (lang: 'fr-FR' | 'en-US' | null) => {
+    setForcedLanguage(lang);
+    setShowLanguageSelector(false);
+      // If currently speaking, restart with the new language
+    if (isSpeaking && message.content) {
+      stopSpeech();
+      setTimeout(() => {
+        const langToUse = lang || detectLanguage(message.content);
+        setSpeechLanguage(langToUse as 'fr-FR' | 'en-US' | null);
+        speakText(message.content, langToUse);
+      }, 100);
+    }
+  };  // Update the speaking state if speech ends
+  useEffect(() => {
+    const checkSpeechStatus = () => {
+      if (!window.speechSynthesis.speaking && isSpeaking) {
+        setIsSpeaking(false);
+        setSpeechLanguage(null);
+      }
+    };
+    
+    const interval = setInterval(checkSpeechStatus, 100);
+    return () => {
+      clearInterval(interval);
+      // Stop speech if component unmounts while speaking
+      if (isSpeaking) {
+        stopSpeech();
+        setSpeechLanguage(null);
+      }
+    };
+  }, [isSpeaking]);
+    // Handle click outside the language selector to close it
+  useEffect(() => {
+    if (!showLanguageSelector) return;
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      // Check if the click is outside the dropdown
+      const target = event.target as Node;
+      const dropdownContainer = document.querySelector('.language-selector-dropdown');
+      
+      if (dropdownContainer && !dropdownContainer.contains(target)) {
+        setShowLanguageSelector(false);
+      }
+    };
+    
+    // Add the event listener
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    // Clean up the event listener
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showLanguageSelector]);
 
   const renderFileIndicator = () => {
     if (!message.attachedFile) return null;
@@ -476,25 +534,56 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
   const MarkdownComponents = {
     p: ({ children, ...props }: PProps) => {
       // Vérifier si le paragraphe contient des éléments non autorisés comme div ou pre
-      // Si oui, utiliser un div à la place d'un p pour éviter les erreurs d'hydratation
+      // Si oui, utiliser un div à la place d'un p pour éviter les erreurs d'hydratation      // Enhanced check for block elements to prevent hydration errors
       const hasBlockElements = React.Children.toArray(children || []).some(
         (child) => {
+          // Check if child is a React element
           if (React.isValidElement(child)) {
-            return child.type === 'code' || 
-                   child.type === CodeBlock || 
-                   child.type === 'div' || 
-                   child.type === 'pre';
+            // Check for direct block elements
+            if (
+              child.type === 'code' || 
+              child.type === CodeBlock || 
+              child.type === 'div' || 
+              child.type === 'pre'
+            ) {
+              return true;
+            }
+            
+            // Check for nested components that might contain divs
+            if (typeof child.type === 'function') {
+              // For custom components, assume they might contain block elements
+              // to be on the safe side
+              return true;
+            }            // Check for props.children that might contain nested divs
+            if (child.props) {
+              // Type assertion to treat props as a Record with potential children
+              const props = child.props as Record<string, unknown>;
+              if ('children' in props) {
+                // If there are nested children, recursively check them
+                const nestedChildren = React.Children.toArray(props.children as ReactNode);
+                if (nestedChildren.length > 0) {
+                  return nestedChildren.some(nestedChild => 
+                    React.isValidElement(nestedChild) && 
+                    (nestedChild.type === 'div' || nestedChild.type === 'pre')
+                  );
+                }
+              }
+            }
           }
+          
+          // Check for markdown code blocks in string content
           if (typeof child === 'string') {
-            return child.includes('```');
+            return child.includes('```') || child.includes('<div');
           }
+          
           return false;
         }
-      );
-
+      );      // Safely render either div or p based on content
       return hasBlockElements ? (
-        <div {...props}>{children}</div>
+        // If block elements detected, use div to avoid HTML nesting errors
+        <div className="markdown-paragraph-wrapper" {...props}>{children}</div>
       ) : (
+        // Otherwise use p tag as expected for normal paragraphs
         <p {...props}>{children}</p>
       );
     },
@@ -661,13 +750,147 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
             prose-sm prose-pre:p-0 prose-pre:bg-transparent prose-pre:m-0`}
           >
             {processMessageContent()}
-          </div>
+          </div>          {isAI && (
+            <div className="mt-3 flex items-center gap-2">              {/* Audio controls - separated into two distinct buttons */}
+              <div className="relative flex items-center">
+                {/* Main audio button */}
+                <button 
+                  onClick={handleSpeakMessage}
+                  className={`text-xs ${theme === 'dark' 
+                    ? `${isSpeaking ? 'bg-green-700/60 hover:bg-green-700/80 text-green-200 border border-green-700/40' 
+                      : 'bg-green-800/40 hover:bg-green-700/60 text-green-200 border border-green-700/40'}`
+                    : `${isSpeaking ? 'bg-green-200 hover:bg-green-300 text-green-800 border border-green-300' 
+                      : 'bg-green-100 hover:bg-green-200 text-green-800 border border-green-200'}`} 
+                      px-2 py-1 rounded-l flex items-center gap-1 transition-colors`}
+                  title={isSpeaking ? "Arrêter la lecture" : "Écouter la réponse"}
+                >
+                  {isSpeaking ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 001.414-3.536 5 5 0 00-1.414-3.536M2.757 17.657a9 9 0 012.829-14.142" />
+                    </svg>
+                  )}
+                  {isSpeaking ? "Arrêter" : "Écouter"}
+                </button>
+                
+                {/* Language selector button - separate from main button */}
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowLanguageSelector(!showLanguageSelector);
+                  }}
+                  className={`flex items-center gap-0.5 text-xs rounded-r border-l-0 px-1.5 py-1 text-center ${
+                    theme === 'dark' 
+                      ? `${isSpeaking ? 'bg-green-700/60 hover:bg-green-700/80 text-green-200 border border-green-700/40' 
+                        : 'bg-green-800/40 hover:bg-green-700/60 text-green-200 border border-green-700/40'}`
+                      : `${isSpeaking ? 'bg-green-200 hover:bg-green-300 text-green-800 border border-green-300' 
+                        : 'bg-green-100 hover:bg-green-200 text-green-800 border border-green-200'}`
+                  }`}
+                  title="Changer la langue de lecture vocale"
+                >
+                  {forcedLanguage ? (
+                    // If language is forced by user
+                    <span className="flex items-center gap-0.5">
+                      {forcedLanguage === 'fr-FR' ? (
+                        <>
+                          <span className="hidden xs:inline">FR</span>
+                          <span className="xs:hidden">🇫🇷</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="hidden xs:inline">EN</span>
+                          <span className="xs:hidden">🇬🇧</span>
+                        </>
+                      )}
+                    </span>
+                  ) : (
+                    // Auto-detected language
+                    <span className="flex items-center gap-0.5">
+                      {speechLanguage ? (
+                        speechLanguage === 'fr-FR' ? (
+                          <>
+                            <span className="hidden xs:inline">FR</span>
+                            <span className="xs:hidden">🇫🇷</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="hidden xs:inline">EN</span>
+                            <span className="xs:hidden">🇬🇧</span>
+                          </>
+                        )
+                      ) : (
+                        <span>Auto</span>
+                      )}
+                    </span>
+                  )}
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-2 w-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showLanguageSelector ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                  </svg>
+                </button>
+              </div>
 
-          {isAI && (
-            <div className="mt-3 flex items-center gap-2">
+              {/* Language selector dropdown */}
+              {showLanguageSelector && (
+                <div className={`absolute z-10 top-full left-0 mt-1 w-44 rounded-md shadow-lg language-selector-dropdown ${
+                  theme === 'dark' 
+                    ? 'bg-gray-800 border border-gray-700' 
+                    : 'bg-white border border-gray-200'
+                }`}>
+                  <div className="py-1">
+                    <div className={`px-3 py-1.5 text-xs font-medium ${
+                      theme === 'dark' ? 'text-gray-400 border-b border-gray-700' : 'text-gray-500 border-b border-gray-200'
+                    }`}>
+                      Langue de lecture vocale
+                    </div>
+                    
+                    <button
+                      onClick={() => handleSetLanguage(null)}
+                      className={`flex items-center gap-2 px-4 py-2 text-xs w-full text-left transition-colors ${
+                        forcedLanguage === null
+                          ? (theme === 'dark' ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800')
+                          : (theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')
+                      }`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16l2.879-2.879M8 16l3.636 3.636M8 16h12M4 8l3.636-3.636M4 8l2.879 2.879M4 8h12" />
+                      </svg>
+                      <span>Auto-détection</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleSetLanguage('fr-FR')}
+                      className={`flex items-center gap-2 px-4 py-2 text-xs w-full text-left transition-colors ${
+                        forcedLanguage === 'fr-FR'
+                          ? (theme === 'dark' ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800')
+                          : (theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')
+                      }`}
+                    >
+                      <span className="w-5 flex justify-center">🇫🇷</span>
+                      <span>Français (FR)</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleSetLanguage('en-US')}
+                      className={`flex items-center gap-2 px-4 py-2 text-xs w-full text-left transition-colors ${
+                        forcedLanguage === 'en-US'
+                          ? (theme === 'dark' ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800')
+                          : (theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')
+                      }`}
+                    >
+                      <span className="w-5 flex justify-center">🇬🇧</span>
+                      <span>English (EN)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+              
               <button 
                 onClick={handleCopyMessage}
-                className={`text-xs ${theme === 'dark' 
+                className={`text-xs ${theme === 'dark'
                   ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700' 
                   : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'} 
                   px-2 py-1 rounded flex items-center gap-1 transition-colors`}
@@ -683,7 +906,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                 ) : (
                   <>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 012 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 012 2h2a2 2 0 002-2M8 5a 2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                     Copier
                   </>
@@ -701,65 +924,11 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Régénérer
+                  </svg>                  Régénérer
                 </button>
-              )}
-
-              {isAI && !isRagMode && (
-                <button 
-                  onClick={() => setShowRagSuggestions(!showRagSuggestions)}
-                  className={`text-xs ${theme === 'dark' 
-                    ? 'bg-indigo-800/40 hover:bg-indigo-700/40 text-indigo-300 border border-indigo-700/40' 
-                    : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200'} 
-                    px-2 py-1 rounded flex items-center gap-1 transition-colors ml-auto`}
-                  title="Suggestions de questions avec recherche web"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Questions RAG
-                  {showRagSuggestions ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  )}
-                </button>
-              )}
-
-              {showRagSuggestions && (
-                <div className={`mt-2 text-xs ${theme === 'dark' ? 'border-t border-indigo-800/50' : 'border-t border-indigo-200'} pt-2`}>
-                  <p className={`mb-1 ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700'} font-medium`}>
-                    Suggestions de questions RAG:
-                  </p>
-                  <ul className="space-y-1 ml-4">
-                    {ragSuggestions.map((suggestion, index) => (
-                      <li key={index} className="flex items-start gap-2">                        <button 
-                          onClick={() => {
-                            if (onSuggestionClick) {
-                              onSuggestionClick(suggestion.text);
-                            }
-                          }}
-                          className={`text-left ${theme === 'dark' ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-700 hover:text-indigo-800'} underline`}
-                        >
-                          {suggestion.text}
-                        </button>
-                        <span className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {suggestion.description}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              )}              {/* "Questions RAG" button removed */}
             </div>
-          )}
-
-          {isAI && hasSources && (
+          )}          {isAI && hasSources && (
             <div className={`${onRegenerate ? 'mt-2' : 'mt-3'} max-w-3xl`}>              <button 
                 onClick={() => setShowSources(!showSources)}
                 className={`text-xs ${theme === 'dark' 
@@ -827,48 +996,32 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                     ))}
                   </ul>
                 </div>
-              )}
-            </div>
-          )}          {/* Ajout des suggestions RAG en bas de la réponse AI - zone soulignée en rouge */}
-          {isAI && (
-            <div className="mt-4 w-full border-t pt-3">
-              <div className="flex items-center gap-2 mb-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${theme === 'dark' ? 'text-blue-300' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              )}            </div>
+          )}
+          
+          {/* Bottom RAG suggestions - Added back with collapsible functionality */}
+          {isAI && message.role === 'assistant' && message.mode !== 'rag' && onSuggestionClick && (
+            <div className="mt-3">
+              <button 
+                onClick={() => setShowRagSuggestions(!showRagSuggestions)}
+                className={`text-xs ${theme === 'dark' 
+                  ? 'bg-indigo-900/30 hover:bg-indigo-800/40 text-indigo-300' 
+                  : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700'} px-2 py-1 rounded flex items-center gap-1 transition-colors`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                <h4 className={`text-sm font-medium ${theme === 'dark' ? 'text-blue-300' : 'text-blue-700'}`}>
-                  Essayez avec la recherche web (RAG)
-                </h4>
-              </div>
-              <div className="grid grid-cols-1 gap-2">
-                {ragSuggestions.map((suggestion, index) => (
-                  <div 
-                    key={index}
-                    onClick={() => {
-                      if (onSuggestionClick) {
-                        onSuggestionClick(suggestion.text);
-                      }
-                    }}
-                    className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
-                      ${theme === 'dark' 
-                        ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
-                        : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}
-                  >
-                    <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                      &quot;{suggestion.text}&quot;
-                    </p>
-                    <div className="flex items-center mt-1">
-                      <span className={`text-xs px-1.5 py-0.5 rounded mr-2
-                        ${theme === 'dark' 
-                          ? 'bg-blue-800/60 text-blue-300' 
-                          : 'bg-blue-100 text-blue-700'}`}>
-                        RAG
-                      </span>
-                      <span className="text-xs opacity-70">{suggestion.description}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                {showRagSuggestions ? "Masquer les suggestions RAG" : "Afficher les suggestions RAG"}
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showRagSuggestions ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                </svg>
+              </button>
+              
+              <SmartRAGSuggestions 
+                isVisible={showRagSuggestions}
+                onSuggestionClick={onSuggestionClick}
+                theme={theme}
+              />
             </div>
           )}
         </div>

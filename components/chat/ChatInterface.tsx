@@ -5,13 +5,16 @@ import { ModelSelector } from './ModelSelector';
 import HistorySidebar from './HistorySidebar';
 import CodeSidebar from './CodeSidebar';
 import { FileUploader } from '@/components/ui/FileUploader';
-import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
+import SpeechSynthesisCheck from '@/components/ui/SpeechSynthesisCheck';
 import { Message, ChatMode, ChatSession } from '@/types';
 import { openRouterModels, getModelById } from '@/lib/models';
 import { isImageFile, isVideoFile, createMediaDescription, createImageContentWithBase64 } from '@/lib/media-utils';
 
 // Génère un ID unique
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+// Variable to store the AbortController instance
+let abortController: AbortController | null = null;
 
 const ChatInterface: React.FC = () => {
   // Use the first available OpenRouter model as the default
@@ -45,8 +48,7 @@ const ChatInterface: React.FC = () => {
   
   // État pour détecter si l'écran est mobile
   const [isMobile, setIsMobile] = useState(false);
-    // États pour les suggestions RAG
-  const [showRagSuggestions, setShowRagSuggestions] = useState(false);
+  // Anciennement pour les suggestions RAG - supprimé
   
   // Fonction pour détecter si on est sur mobile
   useEffect(() => {
@@ -136,12 +138,12 @@ const ChatInterface: React.FC = () => {
       }
     }
   }, [conversations]);
-  
   // Met à jour les messages et le modèle lorsque la conversation active change
   useEffect(() => {
     if (activeConversationId) {
       const activeConversation = conversations.find(c => c.id === activeConversationId);
       if (activeConversation) {
+        // Nous supprimons la vérification qui utilise JSON.stringify car elle provoque une dépendance circulaire
         setMessages(activeConversation.messages);
         setModelId(activeConversation.modelId);
       }
@@ -171,45 +173,79 @@ const ChatInterface: React.FC = () => {
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
-  
-  // Sauvegarde ou met à jour la conversation courante
-  const saveCurrentConversation = useCallback(() => {
-    if (messages.length === 0) return;
-    
-    const now = Date.now();
-    
-    if (activeConversationId) {
-      // Mise à jour d'une conversation existante
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.id === activeConversationId 
-            ? { ...conv, messages, modelId, updatedAt: now } 
-            : conv
-        )
-      );
-    } else {
-      // Création d'une nouvelle conversation
-      const newConversation: ChatSession = {
-        id: generateId(),
-        title: "",
-        messages,
-        modelId,
-        createdAt: now,
-        updatedAt: now,
-      };
-      
-      setConversations(prev => [...prev, newConversation]);
-      setActiveConversationId(newConversation.id);
-    }
-  }, [messages, modelId, activeConversationId]);
+  }, []);  // La fonction saveCurrentConversation est maintenant intégrée directement dans le useEffect
+  // Nous utilisons une référence pour suivre le dernier état des messages et éviter les boucles infinies
+  const prevMessagesRef = useRef<{messages: Message[], modelId: string, activeConversationId: string | null}>({
+    messages: [],
+    modelId: defaultModelId,
+    activeConversationId: null
+  });
   
   // Sauvegarde la conversation lorsque les messages ou le modèle changent
   useEffect(() => {
-    if (messages.length > 0) {
-      saveCurrentConversation();
+    // Vérifier si les messages ont réellement changé pour éviter les boucles
+    if (
+      messages.length === 0 || 
+      (
+        prevMessagesRef.current.activeConversationId === activeConversationId &&
+        prevMessagesRef.current.messages.length === messages.length &&
+        prevMessagesRef.current.modelId === modelId &&
+        JSON.stringify(prevMessagesRef.current.messages) === JSON.stringify(messages)
+      )
+    ) {
+      return;
     }
-  }, [messages, modelId, saveCurrentConversation]);
+    
+    // Mettre à jour notre référence
+    prevMessagesRef.current = {
+      messages: [...messages],
+      modelId,
+      activeConversationId
+    };
+    
+    // Éviter de sauvegarder si nous venons juste de sélectionner une conversation
+    if (messages.length > 0) {
+      const timeoutId = setTimeout(() => {
+        // On ne sauvegarde que si nous avons un ID actif ou si nous avons des messages
+        if (activeConversationId || messages.length > 0) {
+          // Mise à jour manuelle sans utiliser saveCurrentConversation
+          const now = Date.now();
+          
+          if (activeConversationId) {
+            // Vérifier si la conversation existe déjà
+            const existingConvIndex = conversations.findIndex(conv => conv.id === activeConversationId);
+            
+            if (existingConvIndex >= 0) {
+              // Mise à jour d'une conversation existante
+              const updatedConversations = [...conversations];
+              updatedConversations[existingConvIndex] = {
+                ...updatedConversations[existingConvIndex],
+                messages,
+                modelId,
+                updatedAt: now
+              };
+              setConversations(updatedConversations);
+            }
+          } else if (messages.length > 0) {
+            // Création d'une nouvelle conversation
+            const newConversation: ChatSession = {
+              id: generateId(),
+              title: "",
+              messages,
+              modelId,
+              createdAt: now,
+              updatedAt: now,
+            };
+            
+            setConversations(prev => [...prev, newConversation]);
+            setActiveConversationId(newConversation.id);
+          }
+        }
+      }, 50); // Légère attente pour éviter les conflits
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [messages, modelId, activeConversationId, conversations, defaultModelId]);
   
   const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null) => {
     if (!content.trim() && !file) return;
@@ -342,8 +378,10 @@ const ChatInterface: React.FC = () => {
           });
         }
       }
+        console.log('Envoi au modèle:', modelObject.name, 'mode:', mode, 'avec fichier:', currentFile?.name);
       
-      console.log('Envoi au modèle:', modelObject.name, 'mode:', mode, 'avec fichier:', currentFile?.name);
+      // Create a new AbortController for this request
+      abortController = new AbortController();
       
       // Appel API pour obtenir la réponse
       const response = await fetch('/api/chat', {
@@ -351,6 +389,7 @@ const ChatInterface: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: abortController.signal,
         body: JSON.stringify({
           messages: messagesForAPI,
           model: modelObject,
@@ -361,7 +400,8 @@ const ChatInterface: React.FC = () => {
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Échec de la génération de réponse');      }
+        throw new Error(errorData.error || 'Échec de la génération de réponse');
+      }
       
       const data = await response.json();
       
@@ -389,39 +429,65 @@ const ChatInterface: React.FC = () => {
           url: source.url,  // Keep url for backward compatibility
           snippet: source.snippet,
           position: source.position
-        })) : [],        mode: responseMode, // Utiliser le mode réel de la réponse
+        })) : [],
+        mode: responseMode, // Utiliser le mode réel de la réponse
         autoActivatedRAG: data.autoActivatedRAG // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
       };
+      
       setMessages(prev => [...prev, assistantMessage]);
+      // Gestion des suggestions RAG supprimée
+    } catch (err) {
+      // Utilisons une approche plus robuste pour détecter les annulations
+      // Vérifier si c'est une erreur d'annulation avant de la logger
+      const isUserCancellation = 
+        (err instanceof DOMException && err.name === 'AbortError') || 
+        (err instanceof Error && (
+          err.name === 'AbortError' || 
+          err.message.includes('annulée') ||
+          err.message.includes('canceled') ||
+          err.message.includes('cancelled') ||
+          err.message === 'Demande annulée par l\'utilisateur'
+        ));
       
-      // Si c'est une réponse en mode standard, activer les suggestions RAG
-      if (responseMode === 'standard') {
-        // Afficher les suggestions RAG après une réponse standard
-        setShowRagSuggestions(true);
-      } else {
-        // Masquer les suggestions si c'est une réponse RAG
-        setShowRagSuggestions(false);
+      if (isUserCancellation) {
+        // Annulation volontaire, pas d'erreur à afficher
+        console.log('✓ Génération arrêtée par l\'utilisateur'); // Log informatif uniquement
+        return; // Sortir sans afficher de message d'erreur
       }
-    } catch (error) {
-      console.error('Erreur lors de l\'obtention de la réponse IA:', error);
       
-      // Ajouter un message d'erreur
+      // Seulement pour les vraies erreurs, afficher dans la console
+      console.error('Erreur lors de l\'obtention de la réponse IA:', err);
+      
+      // Ajouter un message d'erreur uniquement pour les vraies erreurs
       const errorMessage: Message = {
         id: generateId(),
         role: 'assistant',
-        content: `Désolé, une erreur s'est produite: ${error instanceof Error ? error.message : 'Erreur inconnue'}. Veuillez réessayer.`,
+        content: `Désolé, une erreur s'est produite: ${err instanceof Error ? err.message : 'Erreur inconnue'}. Veuillez réessayer.`,
         timestamp: Date.now(),
         mode: mode,
       };
-      
       setMessages(prev => [...prev, errorMessage]);
-      // Masquer les suggestions RAG en cas d'erreur
-      setShowRagSuggestions(false);
     } finally {
       setLoading(false);
+      abortController = null;
     }
   };
-  
+    // Fonction pour arrêter la génération de la réponse
+  const handleStopGeneration = useCallback(() => {
+    if (abortController) {
+      console.log('Arrêt de la génération de la réponse');
+      try {
+        abortController.abort('Demande annulée par l\'utilisateur');
+      } catch (err) {
+        // Ignorer l'erreur si l'annulation échoue
+        console.log('Erreur lors de l\'annulation de la requête:', err);
+      } finally {
+        abortController = null;
+        setLoading(false);
+      }
+    }
+  }, []);
+
   // Fonction pour régénérer une réponse
   const handleRegenerateResponse = async () => {
     if (messages.length < 2) return;
@@ -454,8 +520,7 @@ const ChatInterface: React.FC = () => {
     // Crée une nouvelle conversation et efface les messages
     setMessages([]);
     setActiveConversationId(null);
-    // Masquer les suggestions RAG lors d'une nouvelle conversation
-    setShowRagSuggestions(false);
+    // RAG suggestions code removed
   };
 
   // Ajout de la fonction pour purger tout l'historique
@@ -483,16 +548,7 @@ const ChatInterface: React.FC = () => {
   const handleCreateNewConversation = () => {
     handleClearChat();
   };
-  
-  // Fonction pour gérer les clics sur les suggestions RAG
-  const handleRagSuggestionClick = (suggestion: string) => {
-    // Activer le mode RAG
-    setRagMode(true);
-    // Masquer les suggestions une fois qu'une est sélectionnée
-    setShowRagSuggestions(false);
-    // Envoyer la suggestion comme message avec le mode RAG
-    handleSendMessage(suggestion, 'rag');
-  };
+    // Fonction pour gérer les clics sur les suggestions RAG - supprimée
   
   // Fonction spécifique pour gérer le bouton hamburger (sandwich) sur mobile
   const handleMobileMenuButtonClick = () => {
@@ -541,6 +597,8 @@ const ChatInterface: React.FC = () => {
       setSidebarCode 
     }}>
       <div className={`flex flex-col h-screen transition-colors duration-300 ${themeClasses}`}>
+        {/* Component to check if the browser supports speech synthesis */}
+        <SpeechSynthesisCheck />
         {/* Header with model selector - now fixed at the top */}
         <div className={`sticky top-0 z-20 flex items-center justify-between px-2 py-2 border-b transition-all duration-300 ${headerClasses} backdrop-blur shadow-lg`}>
           <div className="flex items-center gap-2.5">
@@ -858,17 +916,18 @@ const ChatInterface: React.FC = () => {
                           position: source.position
                         }))
                       };
-                      
-                      return (                        <MessageComponent 
+                        return (                        <MessageComponent 
                           key={message.id} 
                           message={transformedMessage} 
                           theme={theme} 
                           onRegenerateResponse={handleRegenerateResponse}
-                          onSuggestionClick={handleRagSuggestionClick}
+                          onSuggestionClick={(suggestion) => {
+                            setRagMode(true);
+                            handleSendMessage(suggestion, 'rag');
+                          }}
                         />
                       );
-                    })}
-                    {loading && (
+                    })}                    {loading && (
                       <div className={`flex gap-2 items-center ${theme === 'dark' ? 'text-blue-300' : 'text-blue-600'} animate-pulse`}>
                         <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-600/20">
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -877,14 +936,6 @@ const ChatInterface: React.FC = () => {
                         </div>
                         <span>TETIKA est en train de réfléchir...</span>
                       </div>                    )}
-                    
-                    {/* Afficher les suggestions RAG après une réponse standard */}
-                    {messages.length > 0 && showRagSuggestions && (                      <SmartRAGSuggestions
-                        isVisible={showRagSuggestions}
-                        onSuggestionClick={handleRagSuggestionClick}
-                        theme={theme}
-                      />
-                    )}
                   </div>
                 )}
                 <div ref={messagesEndRef} />
@@ -895,17 +946,16 @@ const ChatInterface: React.FC = () => {
             <div className={`border-t sticky bottom-0 z-10 transition-all duration-300
               ${theme === 'dark' 
                 ? 'border-gray-800 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 shadow-lg shadow-blue-900/10' 
-                : 'border-gray-200 bg-gradient-to-r from-white via-gray-50 to-white shadow-lg shadow-blue-200/10'}`}>
-              <div className="max-w-4xl mx-auto">                <ChatInput 
+                : 'border-gray-200 bg-gradient-to-r from-white via-gray-50 to-white shadow-lg shadow-blue-200/10'}`}>              <div className="max-w-4xl mx-auto">                <ChatInput 
                   onSendMessage={handleSendMessage} 
                   loading={loading}
                   theme={theme}
                   ragMode={ragMode}                  onRagModeChange={toggleRagMode}
                   onFileUploadClick={() => setShowFileUploader(true)}
                   selectedFile={selectedFile}
-                  onCancelFileUpload={() => setSelectedFile(null)}
-                  previousMessages={messages.map(m => ({ role: m.role, content: m.content }))}
-                  onInputFocus={() => setShowRagSuggestions(false)} // Masquer les suggestions quand l'utilisateur commence à taper
+                  onCancelFileUpload={() => setSelectedFile(null)}                  previousMessages={messages.map(m => ({ role: m.role, content: m.content }))}
+                  onInputFocus={() => {}} // Fonction masquant les suggestions supprimée
+                  onStopGeneration={handleStopGeneration}
                 />
               </div>
             </div>
