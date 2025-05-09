@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMode } from '@/types';
+import { SmartSuggestions } from '@/components/ui/SmartSuggestions';
 
 interface ChatInputProps {
   onSendMessage: (message: string, mode: ChatMode, selectedFile?: File | null) => void;
@@ -10,6 +11,8 @@ interface ChatInputProps {
   onFileUploadClick: () => void;
   selectedFile?: File | null;
   onCancelFileUpload?: () => void;
+  previousMessages?: Array<{ role: string; content: string }>;
+  onInputFocus?: () => void; // Nouveau callback pour détecter quand l'utilisateur commence à taper
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({ 
@@ -20,11 +23,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onRagModeChange,
   onFileUploadClick,
   selectedFile,
-  onCancelFileUpload
+  onCancelFileUpload,
+  previousMessages = [],
+  onInputFocus
 }) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   
   useEffect(() => {
     const checkIfMobile = () => {
@@ -38,6 +44,26 @@ const ChatInput: React.FC<ChatInputProps> = ({
       window.removeEventListener('resize', checkIfMobile);
     };
   }, []);
+  // Gérer les événements du clavier
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.addEventListener('focus', () => {
+        setShowSuggestions(true);
+        // Appeler le callback onInputFocus s'il est défini
+        if (onInputFocus) {
+          onInputFocus();
+        }
+      });
+      textareaRef.current.addEventListener('blur', () => setTimeout(() => setShowSuggestions(false), 200));
+    }
+    
+    return () => {
+      if (textareaRef.current) {
+        textareaRef.current.removeEventListener('focus', () => setShowSuggestions(true));
+        textareaRef.current.removeEventListener('blur', () => setShowSuggestions(false));
+      }
+    };
+  }, []);
   
   useEffect(() => {
     if (textareaRef.current) {
@@ -46,8 +72,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, maxHeight)}px`;
     }
   }, [message, isMobile]);
-  
-  const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedMessage = message.trim();
     
@@ -66,6 +91,22 @@ const ChatInput: React.FC<ChatInputProps> = ({
         onSendMessage(trimmedMessage, ragMode ? 'rag' : 'standard', selectedFile);
         setMessage('');
       }
+    }
+  };
+  
+  const handleSuggestionClick = (suggestion: string) => {
+    setMessage(suggestion);
+    // Mettre le focus sur la zone de texte après avoir choisi une suggestion
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+    
+    // Si la suggestion concerne l'actualité, activer le mode RAG automatiquement
+    if (suggestion.toLowerCase().includes('dernières') || 
+        suggestion.toLowerCase().includes('actualités') || 
+        suggestion.toLowerCase().includes('récents') ||
+        suggestion.toLowerCase().includes('situation actuelle')) {
+      onRagModeChange(true);
     }
   };
   
@@ -152,6 +193,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
           : theme === 'dark'
             ? 'shadow-[0_0_10px_rgba(30,41,59,0.3)] border border-gray-700/80 bg-gray-900/80'
             : 'shadow-[0_0_10px_rgba(241,245,249,0.5)] border border-gray-200/80 bg-white/95'}`}>
+        
+        {/* Composant pour les suggestions intelligentes */}
+        <SmartSuggestions 
+          inputText={message}
+          onSuggestionClick={handleSuggestionClick}
+          visible={showSuggestions && !loading}
+          previousMessages={previousMessages}
+          ragMode={ragMode}
+        />
         
         <button
           type="button"

@@ -1,6 +1,7 @@
 import React, { useState, createContext, ReactNode } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import { Message as MessageType } from '@/types';
+import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
 
 // Define the code sidebar context type
 interface CodeSidebarContextType {
@@ -27,11 +28,37 @@ type SourceType = {
   position?: number;
 };
 
+// Liste de suggestions de prompts RAG à afficher après une réponse en mode standard
+const ragSuggestions = [
+  {
+    text: "Pourrais-tu me fournir des données récentes sur ce sujet?",
+    description: "Obtiens des informations à jour depuis le web"
+  },
+  {
+    text: "Quelles sont les dernières actualités concernant ce domaine?",
+    description: "Recherche des informations récentes en ligne"
+  },
+  {
+    text: "Y a-t-il eu des développements significatifs sur ce sujet récemment?",
+    description: "Accède à des données actualisées pour compléter la réponse"
+  },
+  {
+    text: "Peux-tu enrichir cette réponse avec des sources externes?",
+    description: "Améliore la réponse avec des références vérifiables"
+  }
+];
+
 interface MessageProps {
-  message: MessageType & { mode?: 'rag' | string; sources?: SourceType[] };
+  message: MessageType & { 
+    mode?: 'rag' | string; 
+    sources?: SourceType[];
+    autoActivatedRAG?: boolean;
+  };
   theme?: 'dark' | 'light';
   onRegenerate?: (messageId: string) => void;
   onRegenerateResponse?: () => void; // Added new prop
+  onSuggestionClick?: (suggestion: string) => void; // Pour gérer les clics sur les suggestions RAG
+  showBottomSuggestions?: boolean; // Pour contrôler l'affichage des suggestions en bas
 }
 
 interface CodeBlockProps {
@@ -273,14 +300,15 @@ const getSourceUrl = (source: SourceType): string => {
   return source?.url || source?.link || '#';
 };
 
-export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onRegenerate, onRegenerateResponse }) => {
+export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onRegenerate, onRegenerateResponse, onSuggestionClick }) => {
   const [showSources, setShowSources] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isCopiedMessage, setIsCopiedMessage] = useState(false);
-
+  const [showRagSuggestions, setShowRagSuggestions] = useState(false);
   const isAI = message.role === 'assistant';
   const hasSources = message.sources && message.sources.length > 0;
   const isRagMode = message.mode === 'rag';
+  const isAutoRAG = isRagMode && message.autoActivatedRAG;
 
   const isShortMessage = !isAI && message.content && message.content.length < 50;
 
@@ -585,12 +613,23 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
             <span className={`ml-2 font-medium text-sm flex items-center gap-1.5
               ${theme === 'dark' ? (isRagMode ? 'text-blue-300' : 'text-gray-200') : (isRagMode ? 'text-blue-700' : 'text-gray-800')}`}>
               {isAI ? (
-                <>
-                  TETIKA AI
+                <>                  TETIKA AI
                   {isRagMode && (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                    <span className="flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>                      {isAutoRAG && (
+                        <span className={`ml-1 text-xs rounded-full px-1.5 py-0.5 flex items-center
+                          ${theme === 'dark' 
+                            ? 'bg-indigo-800/50 text-indigo-300 border border-indigo-700/30' 
+                            : 'bg-indigo-100 text-indigo-700 border border-indigo-200/50'}`}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Auto
+                        </span>
+                      )}
+                    </span>
                   )}
                 </>
               ) : (
@@ -664,15 +703,65 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Générer
+                  Régénérer
                 </button>
+              )}
+
+              {isAI && !isRagMode && (
+                <button 
+                  onClick={() => setShowRagSuggestions(!showRagSuggestions)}
+                  className={`text-xs ${theme === 'dark' 
+                    ? 'bg-indigo-800/40 hover:bg-indigo-700/40 text-indigo-300 border border-indigo-700/40' 
+                    : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200'} 
+                    px-2 py-1 rounded flex items-center gap-1 transition-colors ml-auto`}
+                  title="Suggestions de questions avec recherche web"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Questions RAG
+                  {showRagSuggestions ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  )}
+                </button>
+              )}
+
+              {showRagSuggestions && (
+                <div className={`mt-2 text-xs ${theme === 'dark' ? 'border-t border-indigo-800/50' : 'border-t border-indigo-200'} pt-2`}>
+                  <p className={`mb-1 ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700'} font-medium`}>
+                    Suggestions de questions RAG:
+                  </p>
+                  <ul className="space-y-1 ml-4">
+                    {ragSuggestions.map((suggestion, index) => (
+                      <li key={index} className="flex items-start gap-2">                        <button 
+                          onClick={() => {
+                            if (onSuggestionClick) {
+                              onSuggestionClick(suggestion.text);
+                            }
+                          }}
+                          className={`text-left ${theme === 'dark' ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-700 hover:text-indigo-800'} underline`}
+                        >
+                          {suggestion.text}
+                        </button>
+                        <span className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {suggestion.description}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           )}
 
           {isAI && hasSources && (
-            <div className={`${onRegenerate ? 'mt-2' : 'mt-3'} max-w-3xl`}>
-              <button 
+            <div className={`${onRegenerate ? 'mt-2' : 'mt-3'} max-w-3xl`}>              <button 
                 onClick={() => setShowSources(!showSources)}
                 className={`text-xs ${theme === 'dark' 
                   ? 'bg-blue-900/50 hover:bg-blue-800/50 text-blue-300' 
@@ -682,13 +771,24 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m-1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 {showSources ? 'Masquer les sources' : 'Afficher les sources'}
-              </button>
-
-              {showSources && (
+                {isAutoRAG && (
+                  <span className="ml-1 opacity-80">(auto)</span>
+                )}
+              </button>              {showSources && (
                 <div className={`mt-2 text-xs ${theme === 'dark' ? 'border-t border-blue-800/50' : 'border-t border-blue-200'} pt-2`}>
                   <p className={`mb-1 ${theme === 'dark' ? 'text-blue-300' : 'text-blue-700'} font-medium`}>
                     Sources utilisées:
                   </p>
+                  {isAutoRAG && (
+                    <p className={`mb-2 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'} italic bg-opacity-20 p-1 rounded ${
+                      theme === 'dark' ? 'bg-blue-900/20' : 'bg-blue-50'
+                    }`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      La recherche web a été activée automatiquement car l'IA a détecté qu'elle pourrait ne pas avoir les informations les plus à jour sur ce sujet.
+                    </p>
+                  )}
                   <ul className="space-y-1 ml-4">
                     {message.sources && message.sources.map((source, index) => (
                       <li key={index} className="flex items-center gap-1">
@@ -731,6 +831,47 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                   </ul>
                 </div>
               )}
+            </div>
+          )}          {/* Ajout des suggestions RAG en bas de la réponse AI - zone soulignée en rouge */}
+          {isAI && (
+            <div className="mt-4 w-full border-t pt-3">
+              <div className="flex items-center gap-2 mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${theme === 'dark' ? 'text-blue-300' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <h4 className={`text-sm font-medium ${theme === 'dark' ? 'text-blue-300' : 'text-blue-700'}`}>
+                  Essayez avec la recherche web (RAG)
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {ragSuggestions.map((suggestion, index) => (
+                  <div 
+                    key={index}
+                    onClick={() => {
+                      if (onSuggestionClick) {
+                        onSuggestionClick(suggestion.text);
+                      }
+                    }}
+                    className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                      ${theme === 'dark' 
+                        ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                        : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}
+                  >
+                    <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                      "{suggestion.text}"
+                    </p>
+                    <div className="flex items-center mt-1">
+                      <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                        ${theme === 'dark' 
+                          ? 'bg-blue-800/60 text-blue-300' 
+                          : 'bg-blue-100 text-blue-700'}`}>
+                        RAG
+                      </span>
+                      <span className="text-xs opacity-70">{suggestion.description}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

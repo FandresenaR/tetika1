@@ -5,6 +5,7 @@ import { ModelSelector } from './ModelSelector';
 import HistorySidebar from './HistorySidebar';
 import CodeSidebar from './CodeSidebar';
 import { FileUploader } from '@/components/ui/FileUploader';
+import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
 import { Message, ChatMode, ChatSession } from '@/types';
 import { openRouterModels, getModelById } from '@/lib/models';
 import { isImageFile, isVideoFile, createMediaDescription, createImageContentWithBase64 } from '@/lib/media-utils';
@@ -44,6 +45,10 @@ const ChatInterface: React.FC = () => {
   
   // État pour détecter si l'écran est mobile
   const [isMobile, setIsMobile] = useState(false);
+  
+  // États pour les suggestions RAG
+  const [showRagSuggestions, setShowRagSuggestions] = useState(false);
+  const [lastStandardQuestion, setLastStandardQuestion] = useState('');
   
   // Fonction pour détecter si on est sur mobile
   useEffect(() => {
@@ -282,7 +287,7 @@ const ChatInterface: React.FC = () => {
             // Ajouter un message système avec le contenu du fichier
             messagesForAPI.push({
               role: 'system',
-              content: `Fichier: ${currentFile.name}\n\nContenu:\n${fileContent}\n\nVeuillez analyser ce fichier en fonction de la demande de l'utilisateur.`
+              content: `Fichier: ${currentFile.name}\n\nContenu:\n${fileContent}\n\nVeuillez analyser ce fichier en fonction de la demande de l&apos;utilisateur.`
             });
           } catch (error) {
             console.error('Erreur lors de la lecture du fichier:', error);
@@ -304,7 +309,7 @@ const ChatInterface: React.FC = () => {
               // Cela sera converti côté API en format approprié
               messagesForAPI.push({
                 role: 'system',
-                content: `L'utilisateur a joint une image: ${currentFile.name}\n\nDescription: ${imageContent.description}\n\nImage base64: ${imageContent.base64.substring(0, 50)}...\n\nVeuillez analyser cette image et répondre aux questions de l'utilisateur.`
+                content: `L&apos;utilisateur a joint une image: ${currentFile.name}\n\nDescription: ${imageContent.description}\n\nImage base64: ${imageContent.base64.substring(0, 50)}...\n\nVeuillez analyser cette image et répondre aux questions de l&apos;utilisateur.`
               });
             } else {
               // Pour les vidéos, utiliser seulement les métadonnées pour l'instant
@@ -318,7 +323,7 @@ const ChatInterface: React.FC = () => {
               // Ajouter un message système avec la description de la vidéo
               messagesForAPI.push({
                 role: 'system',
-                content: `Vidéo jointe: ${currentFile.name}\n\n${mediaDescription}\n\nVeuillez analyser ces métadonnées de la vidéo en fonction de la demande de l'utilisateur.`
+                content: `Vidéo jointe: ${currentFile.name}\n\n${mediaDescription}\n\nVeuillez analyser ces métadonnées de la vidéo en fonction de la demande de l&apos;utilisateur.`
               });
             }
           } catch (error) {
@@ -335,7 +340,7 @@ const ChatInterface: React.FC = () => {
           // Pour les autres types de fichiers, ajouter une instruction
           messagesForAPI.push({
             role: 'system',
-            content: `L'utilisateur a joint un fichier: ${currentFile.name} (${currentFile.type || 'type inconnu'}). Type: ${isImage ? 'Image' : isVideo ? 'Vidéo' : 'Fichier non pris en charge'}. Taille: ${(currentFile.size / 1024).toFixed(2)} KB.`
+            content: `L&apos;utilisateur a joint un fichier: ${currentFile.name} (${currentFile.type || 'type inconnu'}). Type: ${isImage ? 'Image' : isVideo ? 'Vidéo' : 'Fichier non pris en charge'}. Taille: ${(currentFile.size / 1024).toFixed(2)} KB.`
           });
         }
       }
@@ -358,10 +363,16 @@ const ChatInterface: React.FC = () => {
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Échec de la génération de réponse');
-      }
+        throw new Error(errorData.error || 'Échec de la génération de réponse');      }
       
       const data = await response.json();
+      
+      // Déterminer le mode réel en fonction de si le RAG a été activé automatiquement
+      const responseMode = data.autoActivatedRAG ? 'rag' : mode;
+      // Si le RAG a été activé automatiquement, mettre à jour l'état
+      if (data.autoActivatedRAG) {
+        setRagMode(true);
+      }
       
       // Créer le message de réponse
       const assistantMessage: Message = {
@@ -381,10 +392,20 @@ const ChatInterface: React.FC = () => {
           snippet: source.snippet,
           position: source.position
         })) : [],
-        mode: mode,
+        mode: responseMode, // Utiliser le mode réel de la réponse
+        autoActivatedRAG: data.autoActivatedRAG // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
       };
-      
-      setMessages(prev => [...prev, assistantMessage]);
+        setMessages(prev => [...prev, assistantMessage]);
+        // Si c'est une réponse en mode standard, activer les suggestions RAG
+      if (responseMode === 'standard') {
+        // Stocker la dernière question pour contextualiser les suggestions
+        setLastStandardQuestion(content);
+        // Afficher les suggestions RAG après une réponse standard
+        setShowRagSuggestions(true);
+      } else {
+        // Masquer les suggestions si c'est une réponse RAG
+        setShowRagSuggestions(false);
+      }
     } catch (error) {
       console.error('Erreur lors de l\'obtention de la réponse IA:', error);
       
@@ -398,6 +419,8 @@ const ChatInterface: React.FC = () => {
       };
       
       setMessages(prev => [...prev, errorMessage]);
+      // Masquer les suggestions RAG en cas d'erreur
+      setShowRagSuggestions(false);
     } finally {
       setLoading(false);
     }
@@ -431,11 +454,12 @@ const ChatInterface: React.FC = () => {
     setModelId(newModelId);
     setIsModelSelectorOpen(false);
   };
-  
-  const handleClearChat = () => {
+    const handleClearChat = () => {
     // Crée une nouvelle conversation et efface les messages
     setMessages([]);
     setActiveConversationId(null);
+    // Masquer les suggestions RAG lors d'une nouvelle conversation
+    setShowRagSuggestions(false);
   };
 
   // Ajout de la fonction pour purger tout l'historique
@@ -456,13 +480,22 @@ const ChatInterface: React.FC = () => {
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
-  
-  const handleSelectConversation = (conversationId: string) => {
+    const handleSelectConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
   };
   
   const handleCreateNewConversation = () => {
     handleClearChat();
+  };
+  
+  // Fonction pour gérer les clics sur les suggestions RAG
+  const handleRagSuggestionClick = (suggestion: string) => {
+    // Activer le mode RAG
+    setRagMode(true);
+    // Masquer les suggestions une fois qu'une est sélectionnée
+    setShowRagSuggestions(false);
+    // Envoyer la suggestion comme message avec le mode RAG
+    handleSendMessage(suggestion, 'rag');
   };
   
   // Fonction spécifique pour gérer le bouton hamburger (sandwich) sur mobile
@@ -482,12 +515,11 @@ const ChatInterface: React.FC = () => {
   };
 
   const handleStartNewConversation = (mode: ChatMode) => {
-    handleClearChat();
-    // Force le démarrage d'une nouvelle conversation avec le mode sélectionné
+    handleClearChat();    // Force le démarrage d'une nouvelle conversation avec le mode sélectionné
     // La chaîne vide comme premier message ne sera pas affichée à l'utilisateur
     // mais permettra d'initialiser le mode
     setRagMode(mode === 'rag');
-    handleSendMessage('Bonjour TETIKA, peux-tu m\'aider ?', mode);
+    handleSendMessage("Bonjour TETIKA, peux-tu m&apos;aider ?", mode);
   };
 
   const themeClasses = theme === 'dark' 
@@ -581,11 +613,10 @@ const ChatInterface: React.FC = () => {
                   ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700' 
                   : 'bg-gray-200 hover:bg-gray-300 text-gray-700 border border-gray-300'}`}
               title="Effacer la conversation"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            >              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className="hidden xs:inline">Nouvelle</span>
+              <span className="hidden md:inline">Nouvelle conversation</span>
             </button>
             
             <button
@@ -594,11 +625,11 @@ const ChatInterface: React.FC = () => {
                   ? 'bg-gradient-to-r from-blue-600/30 to-cyan-600/30 hover:from-blue-600/40 hover:to-cyan-600/40 text-blue-300 border border-blue-800' 
                   : 'bg-gradient-to-r from-blue-100 to-cyan-100 hover:from-blue-200 hover:to-cyan-200 text-blue-700 border border-blue-200'}`}
               onClick={() => setIsModelSelectorOpen(true)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            >              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span className="hidden xs:inline">{currentModelName}</span>
+              <span className="hidden md:inline">Changer de modèle</span>
+              <span className="md:hidden hidden xs:inline">{currentModelName}</span>
             </button>
 
             <button
@@ -607,11 +638,11 @@ const ChatInterface: React.FC = () => {
                 ${theme === 'dark' 
                   ? 'bg-gradient-to-r from-green-600/30 to-teal-600/30 hover:from-green-600/40 hover:to-teal-600/40 text-green-300 border border-green-800' 
                   : 'bg-gradient-to-r from-green-100 to-teal-100 hover:from-green-200 hover:to-teal-200 text-green-700 border border-green-200'}`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            >              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 10l-4-4m0 0l-4 4m4-4v12" />
               </svg>
-              <span className="hidden xs:inline">Upload</span>
+              <span className="hidden md:inline">Uploader un fichier</span>
+              <span className="md:hidden hidden xs:inline">Upload</span>
             </button>
           </div>
         </div>
@@ -692,6 +723,132 @@ const ChatInterface: React.FC = () => {
                         </button>
                       </div>
                       <span className="text-xs mt-2 opacity-75">Activer la recherche web pour des réponses enrichies avec des sources</span>
+                      
+                      {/* Exemples de prompts pour démonstration client */}
+                      <div className={`mt-8 w-full max-w-lg rounded-lg p-4 transition-all
+                        ${theme === 'dark' 
+                          ? 'bg-gray-800/60 border border-gray-700/50' 
+                          : 'bg-white/80 border border-gray-200/70'}`}>
+                        <h3 className={`text-sm font-medium mb-3 ${theme === 'dark' ? 'text-blue-300' : 'text-blue-600'}`}>
+                          Exemples de prompts pour démo
+                        </h3>
+                        <div className="space-y-2">
+                          {/* Exemples qui encouragent l'utilisation du RAG */}
+                          <div 
+                            onClick={() => {
+                              setRagMode(true);
+                              handleSendMessage("Quelles sont les dernières avancées en matière d&apos;intelligence artificielle générative?", "rag");
+                            }}
+                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                              ${theme === 'dark' 
+                                ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                              "Quelles sont les dernières avancées en matière d&apos;intelligence artificielle générative?"
+                            </p>
+                            <div className="flex items-center mt-1">
+                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                ${theme === 'dark' 
+                                  ? 'bg-blue-800/60 text-blue-300'
+                                  : 'bg-blue-100 text-blue-700'}`}>
+                                RAG
+                              </span>
+                              <span className="text-xs opacity-70">Obtient des informations à jour depuis le web</span>
+                            </div>
+                          </div>
+                          
+                          <div 
+                            onClick={() => {
+                              setRagMode(true);
+                              handleSendMessage("Explique-moi la situation actuelle entre l&apos;Ukraine et la Russie", "rag");
+                            }}
+                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                              ${theme === 'dark' 
+                                ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
+                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                              "Explique-moi la situation actuelle entre l&apos;Ukraine et la Russie"
+                            </p>
+                            <div className="flex items-center mt-1">
+                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                ${theme === 'dark' 
+                                  ? 'bg-blue-800/60 text-blue-300' 
+                                  : 'bg-blue-100 text-blue-700'}`}>
+                                RAG
+                              </span>
+                              <span className="text-xs opacity-70">Recherches des infos récentes sur des événements actuels</span>
+                            </div>
+                          </div>
+                          
+                          <div 
+                            onClick={() => {
+                              setRagMode(true);
+                              handleSendMessage("Quelles sont les meilleures pratiques pour développer une application React en 2025?", "rag");
+                            }}
+                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                              ${theme === 'dark' 
+                                ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
+                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                              "Quelles sont les meilleures pratiques pour développer une application React en 2025?"
+                            </p>
+                            <div className="flex items-center mt-1">
+                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                ${theme === 'dark' 
+                                  ? 'bg-blue-800/60 text-blue-300' 
+                                  : 'bg-blue-100 text-blue-700'}`}>
+                                RAG
+                              </span>
+                              <span className="text-xs opacity-70">Recherche des informations techniques récentes</span>
+                            </div>
+                          </div>
+                          
+                          <div 
+                            onClick={() => {
+                              setRagMode(true);
+                              handleSendMessage("Quels sont les impacts du changement climatique observés en 2025?", "rag");
+                            }}
+                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                              ${theme === 'dark' 
+                                ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
+                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                              "Quels sont les impacts du changement climatique observés en 2025?"
+                            </p>
+                            <div className="flex items-center mt-1">
+                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                ${theme === 'dark' 
+                                  ? 'bg-blue-800/60 text-blue-300' 
+                                  : 'bg-blue-100 text-blue-700'}`}>
+                                RAG
+                              </span>
+                              <span className="text-xs opacity-70">Accède aux données environnementales récentes</span>
+                            </div>
+                          </div>
+                          
+                          <div 
+                            onClick={() => {
+                              setRagMode(false);
+                              handleSendMessage("Rédige un court poème sur l&apos;intelligence artificielle", "standard");
+                            }}
+                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                              ${theme === 'dark' 
+                                ? 'bg-gray-800/80 border border-gray-700/60 hover:bg-gray-800' 
+                                : 'bg-gray-50 border border-gray-200 hover:bg-gray-100/70'}`}>
+                            <p className={`text-sm ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                              "Rédige un court poème sur l&apos;intelligence artificielle"
+                            </p>
+                            <div className="flex items-center mt-1">
+                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                ${theme === 'dark' 
+                                  ? 'bg-gray-700 text-gray-300' 
+                                  : 'bg-gray-200 text-gray-700'}`}>
+                                STD
+                              </span>
+                              <span className="text-xs opacity-70">Tâche créative sans besoin de données externes</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -710,12 +867,12 @@ const ChatInterface: React.FC = () => {
                         }))
                       };
                       
-                      return (
-                        <MessageComponent 
+                      return (                        <MessageComponent 
                           key={message.id} 
                           message={transformedMessage} 
                           theme={theme} 
-                          onRegenerateResponse={handleRegenerateResponse} 
+                          onRegenerateResponse={handleRegenerateResponse}
+                          onSuggestionClick={handleRagSuggestionClick}
                         />
                       );
                     })}
@@ -727,7 +884,16 @@ const ChatInterface: React.FC = () => {
                           </svg>
                         </div>
                         <span>TETIKA est en train de réfléchir...</span>
-                      </div>
+                      </div>                    )}
+                    
+                    {/* Afficher les suggestions RAG après une réponse standard */}
+                    {messages.length > 0 && showRagSuggestions && (
+                      <SmartRAGSuggestions
+                        isVisible={showRagSuggestions}
+                        onSuggestionClick={handleRagSuggestionClick}
+                        lastStandardQuestion={lastStandardQuestion}
+                        theme={theme}
+                      />
                     )}
                   </div>
                 )}
@@ -740,16 +906,16 @@ const ChatInterface: React.FC = () => {
               ${theme === 'dark' 
                 ? 'border-gray-800 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 shadow-lg shadow-blue-900/10' 
                 : 'border-gray-200 bg-gradient-to-r from-white via-gray-50 to-white shadow-lg shadow-blue-200/10'}`}>
-              <div className="max-w-4xl mx-auto">
-                <ChatInput 
+              <div className="max-w-4xl mx-auto">                <ChatInput 
                   onSendMessage={handleSendMessage} 
                   loading={loading}
                   theme={theme}
-                  ragMode={ragMode}
-                  onRagModeChange={toggleRagMode}
+                  ragMode={ragMode}                  onRagModeChange={toggleRagMode}
                   onFileUploadClick={() => setShowFileUploader(true)}
                   selectedFile={selectedFile}
                   onCancelFileUpload={() => setSelectedFile(null)}
+                  previousMessages={messages.map(m => ({ role: m.role, content: m.content }))}
+                  onInputFocus={() => setShowRagSuggestions(false)} // Masquer les suggestions quand l'utilisateur commence à taper
                 />
               </div>
             </div>

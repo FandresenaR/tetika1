@@ -25,7 +25,7 @@ Tetika is a futuristic, secure AI chat interface built with Next.js. It provides
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/tetika.git
+git clone https://github.com/FandresenaR/tetika.git
 cd tetika
 ```
 

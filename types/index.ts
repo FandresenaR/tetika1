@@ -16,6 +16,7 @@ export interface Message {
     size: number;
     content: string; // Contenu du fichier encodé en base64 ou texte brut
   };
+  autoActivatedRAG?: boolean; // Indique si le mode RAG a été activé automatiquement
 }
 
 export interface ChatSession {
