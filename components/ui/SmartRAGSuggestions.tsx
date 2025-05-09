@@ -27,14 +27,12 @@ const ragSuggestions = [
 interface SmartRAGSuggestionsProps {
   isVisible: boolean;
   onSuggestionClick: (suggestion: string) => void;
-  lastStandardQuestion?: string;
   theme?: 'dark' | 'light';
 }
 
 export const SmartRAGSuggestions: React.FC<SmartRAGSuggestionsProps> = ({
   isVisible,
   onSuggestionClick,
-  lastStandardQuestion = '',
   theme = 'dark'
 }) => {
   if (!isVisible) return null;
@@ -78,7 +76,7 @@ export const SmartRAGSuggestions: React.FC<SmartRAGSuggestionsProps> = ({
                 : 'bg-indigo-100/80 border border-indigo-200 hover:bg-indigo-200/70'}`}
           >
             <p className={`text-sm ${theme === 'dark' ? 'text-indigo-200' : 'text-indigo-700'}`}>
-              "{suggestion.text}"
+              &quot;{suggestion.text}&quot;
             </p>
             <div className="flex items-center mt-1">
               <span className={`text-xs px-1.5 py-0.5 rounded mr-2

@@ -1,7 +1,6 @@
 import React, { useState, createContext, ReactNode } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import { Message as MessageType } from '@/types';
-import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
 
 // Define the code sidebar context type
 interface CodeSidebarContextType {
@@ -766,11 +765,10 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                 className={`text-xs ${theme === 'dark' 
                   ? 'bg-blue-900/50 hover:bg-blue-800/50 text-blue-300' 
                   : 'bg-blue-100 hover:bg-blue-200 text-blue-700'} px-2 py-1 rounded flex items-center gap-1 transition-colors`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              >                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m-1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                {showSources ? 'Masquer les sources' : 'Afficher les sources'}
+                {showSources ? "Masquer les sources" : "Afficher les sources"}
                 {isAutoRAG && (
                   <span className="ml-1 opacity-80">(auto)</span>
                 )}
@@ -782,11 +780,10 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                   {isAutoRAG && (
                     <p className={`mb-2 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'} italic bg-opacity-20 p-1 rounded ${
                       theme === 'dark' ? 'bg-blue-900/20' : 'bg-blue-50'
-                    }`}>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    }`}>                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      La recherche web a été activée automatiquement car l'IA a détecté qu'elle pourrait ne pas avoir les informations les plus à jour sur ce sujet.
+                      La recherche web a été activée automatiquement car l&apos;IA a détecté qu&apos;elle pourrait ne pas avoir les informations les plus à jour sur ce sujet.
                     </p>
                   )}
                   <ul className="space-y-1 ml-4">
@@ -858,7 +855,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                         : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}
                   >
                     <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                      "{suggestion.text}"
+                      &quot;{suggestion.text}&quot;
                     </p>
                     <div className="flex items-center mt-1">
                       <span className={`text-xs px-1.5 py-0.5 rounded mr-2

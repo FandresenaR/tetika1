@@ -45,10 +45,8 @@ const ChatInterface: React.FC = () => {
   
   // État pour détecter si l'écran est mobile
   const [isMobile, setIsMobile] = useState(false);
-  
-  // États pour les suggestions RAG
+    // États pour les suggestions RAG
   const [showRagSuggestions, setShowRagSuggestions] = useState(false);
-  const [lastStandardQuestion, setLastStandardQuestion] = useState('');
   
   // Fonction pour détecter si on est sur mobile
   useEffect(() => {
@@ -391,15 +389,13 @@ const ChatInterface: React.FC = () => {
           url: source.url,  // Keep url for backward compatibility
           snippet: source.snippet,
           position: source.position
-        })) : [],
-        mode: responseMode, // Utiliser le mode réel de la réponse
+        })) : [],        mode: responseMode, // Utiliser le mode réel de la réponse
         autoActivatedRAG: data.autoActivatedRAG // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
       };
-        setMessages(prev => [...prev, assistantMessage]);
-        // Si c'est une réponse en mode standard, activer les suggestions RAG
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // Si c'est une réponse en mode standard, activer les suggestions RAG
       if (responseMode === 'standard') {
-        // Stocker la dernière question pour contextualiser les suggestions
-        setLastStandardQuestion(content);
         // Afficher les suggestions RAG après une réponse standard
         setShowRagSuggestions(true);
       } else {
@@ -743,7 +739,7 @@ const ChatInterface: React.FC = () => {
                               ${theme === 'dark' 
                                 ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
                                 : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                              "Quelles sont les dernières avancées en matière d&apos;intelligence artificielle générative?"
+                              &quot;Quelles sont les dernières avancées en matière d&apos;intelligence artificielle générative?&quot;
                             </p>
                             <div className="flex items-center mt-1">
                               <span className={`text-xs px-1.5 py-0.5 rounded mr-2
@@ -764,9 +760,8 @@ const ChatInterface: React.FC = () => {
                             className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
                               ${theme === 'dark' 
                                 ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
-                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
-                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                              "Explique-moi la situation actuelle entre l&apos;Ukraine et la Russie"
+                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                              &quot;Explique-moi la situation actuelle entre l&apos;Ukraine et la Russie&quot;
                             </p>
                             <div className="flex items-center mt-1">
                               <span className={`text-xs px-1.5 py-0.5 rounded mr-2
@@ -787,9 +782,8 @@ const ChatInterface: React.FC = () => {
                             className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
                               ${theme === 'dark' 
                                 ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
-                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
-                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                              "Quelles sont les meilleures pratiques pour développer une application React en 2025?"
+                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                              &quot;Quelles sont les meilleures pratiques pour développer une application React en 2025?&quot;
                             </p>
                             <div className="flex items-center mt-1">
                               <span className={`text-xs px-1.5 py-0.5 rounded mr-2
@@ -810,9 +804,8 @@ const ChatInterface: React.FC = () => {
                             className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
                               ${theme === 'dark' 
                                 ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
-                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
-                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                              "Quels sont les impacts du changement climatique observés en 2025?"
+                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                              &quot;Quels sont les impacts du changement climatique observés en 2025?&quot;
                             </p>
                             <div className="flex items-center mt-1">
                               <span className={`text-xs px-1.5 py-0.5 rounded mr-2
@@ -833,9 +826,8 @@ const ChatInterface: React.FC = () => {
                             className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
                               ${theme === 'dark' 
                                 ? 'bg-gray-800/80 border border-gray-700/60 hover:bg-gray-800' 
-                                : 'bg-gray-50 border border-gray-200 hover:bg-gray-100/70'}`}>
-                            <p className={`text-sm ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
-                              "Rédige un court poème sur l&apos;intelligence artificielle"
+                                : 'bg-gray-50 border border-gray-200 hover:bg-gray-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                              &quot;Rédige un court poème sur l&apos;intelligence artificielle&quot;
                             </p>
                             <div className="flex items-center mt-1">
                               <span className={`text-xs px-1.5 py-0.5 rounded mr-2
@@ -887,11 +879,9 @@ const ChatInterface: React.FC = () => {
                       </div>                    )}
                     
                     {/* Afficher les suggestions RAG après une réponse standard */}
-                    {messages.length > 0 && showRagSuggestions && (
-                      <SmartRAGSuggestions
+                    {messages.length > 0 && showRagSuggestions && (                      <SmartRAGSuggestions
                         isVisible={showRagSuggestions}
                         onSuggestionClick={handleRagSuggestionClick}
-                        lastStandardQuestion={lastStandardQuestion}
                         theme={theme}
                       />
                     )}
