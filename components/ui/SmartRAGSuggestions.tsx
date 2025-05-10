@@ -104,7 +104,7 @@ export const SmartRAGSuggestions: React.FC<SmartRAGSuggestionsProps> = ({
   previousMessages = []
 }) => {
   const [relevantSuggestions, setRelevantSuggestions] = useState<Suggestion[]>([]);
-  const [userLanguage, setUserLanguage] = useState<'fr-FR' | 'en-US'>('fr-FR');
+  // Remove unused userLanguage state variable
   const [headerText, setHeaderText] = useState({
     title: 'Questions suggérées avec recherche web (RAG)',
     subtitle: 'Essayez ces questions pour obtenir des informations récentes et des sources externes'
@@ -123,7 +123,7 @@ export const SmartRAGSuggestions: React.FC<SmartRAGSuggestionsProps> = ({
       if (lastUserMessage) {
         // Detect language of the last user message
         detectedLang = detectLanguage(lastUserMessage.content);
-        setUserLanguage(detectedLang as 'fr-FR' | 'en-US');
+        // Remove the setUserLanguage call as it's no longer needed
         
         // Set header text based on language
         if (detectedLang === 'en-US') {

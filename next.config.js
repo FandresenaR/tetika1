@@ -8,6 +8,12 @@ const nextConfig = {
     NEXT_PUBLIC_SERPAPI_API_KEY: process.env.NEXT_PUBLIC_SERPAPI_API_KEY || process.env.SERPAPI_API_KEY,
     NEXT_PUBLIC_NOTDIAMOND_API_KEY: process.env.NEXT_PUBLIC_NOTDIAMOND_API_KEY || process.env.NOTDIAMOND_API_KEY,
   },
+  // ESLint configuration to avoid deployment issues
+  eslint: {
+    // Warning: This allows production builds to successfully complete even if
+    // your project has ESLint errors.
+    ignoreDuringBuilds: false,
+  },
   // Configuration des origines autorisées via les en-têtes HTTP
   async headers() {
     return [

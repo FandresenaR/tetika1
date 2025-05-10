@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChatMode } from '@/types';
 
 interface ChatInputProps {
@@ -20,23 +20,27 @@ const ChatInput: React.FC<ChatInputProps> = ({
   loading,
   theme,
   ragMode,
-  onRagModeChange,
-  onFileUploadClick,
+  onRagModeChange,  onFileUploadClick,
   selectedFile,
   onCancelFileUpload,
-  _previousMessages: previousMessages,
+  // Removed unused previousMessages parameter by prefixing with underscore
   onInputFocus,
   onStopGeneration
 }) => {
-  const [message, setMessage] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [message, setMessage] = useState('');  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleSendMessage = useCallback(() => {
+    if (message.trim()) {
+      onSendMessage(message, ragMode ? 'rag' : 'standard', selectedFile);
+      setMessage('');
+    }
+  }, [message, ragMode, selectedFile, onSendMessage]);
 
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.focus();
     }
   }, []);
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !loading) {
@@ -58,7 +62,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         currentTextarea.removeEventListener('keydown', handleKeyDown);
       }
     };
-  }, [message, loading]);
+  }, [message, loading, handleSendMessage]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -76,15 +80,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
       if (currentTextarea) {
         currentTextarea.removeEventListener('focus', handleFocus);
       }
-    };
-  }, [onInputFocus]);
+    };  }, [onInputFocus]);
 
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      onSendMessage(message, ragMode ? 'rag' : 'standard', selectedFile);
-      setMessage('');
-    }
-  };
+  // Remove the handleSendMessage function since we've moved it above as a useCallback
 
   return (
     <form onSubmit={(e) => e.preventDefault()} className="relative py-0.5 pb-6 sm:pb-8 md:pb-4 mx-3 sm:mx-4">
@@ -175,18 +173,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
           className={`h-auto self-stretch px-2 sm:px-3 flex items-center justify-center transition-all duration-300
             ${theme === 'dark'
               ? 'bg-gray-800/80 hover:bg-gray-700/80 text-gray-400 hover:text-cyan-300 border-r border-gray-700/80'
-              : 'bg-gray-100/80 hover:bg-gray-200/80 text-gray-500 hover:text-cyan-600 border-r border-gray-200/80'}`}
-          title="Ajouter un fichier"
+              : 'bg-gray-100/80 hover:bg-gray-200/80 text-gray-500 hover:text-cyan-600 border-r border-gray-200/80'}`}          title="Ajouter un fichier"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-4.5 sm:w-4.5 transform transition-all hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-4.5 sm:w-4.5 transform transition-all file-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
           </svg>
-        </button>
-
-        <div className="relative w-full">
+        </button>        <div className="relative w-full">
           <textarea
             ref={textareaRef}
-            className={`w-full resize-none py-2 px-3 transition-colors duration-200 focus:ring-0
+            className={`w-full resize-none py-2 px-3 transition-colors duration-200 focus:ring-0 min-h-[40px] max-h-[80px]
               ${theme === 'dark'
                 ? 'bg-transparent text-white placeholder-gray-400 focus:outline-none'
                 : 'bg-transparent text-gray-800 placeholder-gray-400 focus:outline-none'}`}
@@ -199,7 +194,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
             onChange={(e) => setMessage(e.target.value)}
             disabled={loading}
             rows={1}
-            style={{ minHeight: '40px', maxHeight: '80px' }}
           />
           {ragMode && (
             <div className={`absolute bottom-0.5 left-3 right-3 h-0.5 opacity-30 rounded-full overflow-hidden
@@ -247,9 +241,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             )}
           </button>
         )}
-      </div>
-
-      <style jsx global>{`
+      </div>      <style jsx global>{`
         @keyframes pulse-slow {
           0%, 100% {
             transform: scaleX(0.1);
@@ -264,6 +256,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
         }
         .animate-pulse-slow {
           animation: pulse-slow 3s infinite;
+        }
+        .file-icon:hover {
+          transform: scale(1.1);
         }
       `}</style>
     </form>

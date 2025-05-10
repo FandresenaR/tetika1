@@ -158,9 +158,8 @@ const SpeechSynthesisCheck: React.FC = () => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
-      </div>      
-      <p className="text-sm">
-        Vous pouvez désormais écouter les réponses de l&apos;IA en cliquant sur le bouton vert "Écouter" près de chaque message.
+      </div>        <p className="text-sm">
+        Vous pouvez désormais écouter les réponses de l&apos;IA en cliquant sur le bouton vert &quot;Écouter&quot; près de chaque message.
       </p>
       <p className="text-xs mt-1 text-gray-500">Utilisez le bouton &quot;Lire à haute voix&quot; sur les réponses pour activer la lecture.</p>
     </div>
