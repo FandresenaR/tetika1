@@ -77,6 +77,20 @@ SERPAPI_API_KEY=your_serpapi_key_here
 - [TypeScript](https://www.typescriptlang.org/)
 - [OpenRouter API](https://openrouter.ai/docs)
 
+## Architecture & Design Patterns
+
+Tetika implements several design patterns and architectural principles:
+
+- **MVC Pattern**: Separation of data models, views (React components), and controllers (API routes)
+- **Repository Pattern**: Abstraction for data storage and retrieval operations
+- **Service Pattern**: Encapsulation of external API calls and business logic
+- **Strategy Pattern**: Dynamic selection and configuration of AI models
+- **Adapter Pattern**: Normalization of different AI model response formats
+- **Singleton Pattern**: Single instance management for APIs and storage
+- **Factory Pattern**: Creation of categorized models based on descriptions
+- **Component-Based Architecture**: Modular, reusable UI components
+- **Dependency Injection**: For flexible configuration and testability
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
