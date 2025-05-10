@@ -34,6 +34,7 @@ interface MessageProps {
     mode?: 'rag' | string; 
     sources?: SourceType[];
     autoActivatedRAG?: boolean;
+    conversationContext?: Array<{ role: string; content: string }>;
   };
   theme?: 'dark' | 'light';
   onRegenerate?: (messageId: string) => void;
@@ -1016,11 +1017,11 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showRagSuggestions ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
                 </svg>
               </button>
-              
-              <SmartRAGSuggestions 
+                <SmartRAGSuggestions 
                 isVisible={showRagSuggestions}
                 onSuggestionClick={onSuggestionClick}
                 theme={theme}
+                previousMessages={message.conversationContext}
               />
             </div>
           )}

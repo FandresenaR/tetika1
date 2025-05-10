@@ -2,9 +2,6 @@
  * Utility functions for handling text-to-speech functionality
  */
 
-// Keep track of the current speech instance to stop it when needed
-let currentSpeech: SpeechSynthesisUtterance | null = null;
-
 // Store loaded voices
 let cachedVoices: SpeechSynthesisVoice[] = [];
 
@@ -319,8 +316,6 @@ export const speakText = (text: string, lang?: string): boolean => {
 
   console.log(`Speaking text in detected language: ${detectedLang}`);
   
-  // Store the current speech instance
-  currentSpeech = utterance;
   // Start speaking
   window.speechSynthesis.speak(utterance);
   
@@ -356,7 +351,6 @@ export const stopSpeech = (): void => {
   
   if (window.speechSynthesis.speaking) {
     window.speechSynthesis.cancel();
-    currentSpeech = null;
   }
 };
 

@@ -1,122 +1,95 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ChatMode } from '@/types';
-import { SmartSuggestions } from '@/components/ui/SmartSuggestions';
 
 interface ChatInputProps {
-  onSendMessage: (message: string, mode: ChatMode, selectedFile?: File | null) => void;
+  onSendMessage: (message: string, mode: ChatMode, file: File | null) => void;
   loading: boolean;
   theme: 'dark' | 'light';
   ragMode: boolean;
   onRagModeChange: (enabled: boolean) => void;
   onFileUploadClick: () => void;
-  selectedFile?: File | null;
-  onCancelFileUpload?: () => void;
-  previousMessages?: Array<{ role: string; content: string }>;
-  onInputFocus?: () => void; // Nouveau callback pour détecter quand l'utilisateur commence à taper
-  onStopGeneration?: () => void; // Callback pour arrêter la génération de réponses
+  selectedFile: File | null;
+  onCancelFileUpload: () => void;
+  _previousMessages?: { role: string; content: string }[];
+  onInputFocus?: () => void;
+  onStopGeneration?: () => void;
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({ 
-  onSendMessage, 
-  loading, 
-  theme, 
-  ragMode, 
+const ChatInput: React.FC<ChatInputProps> = ({
+  onSendMessage,
+  loading,
+  theme,
+  ragMode,
   onRagModeChange,
   onFileUploadClick,
   selectedFile,
   onCancelFileUpload,
-  previousMessages = [],
+  _previousMessages: previousMessages,
   onInputFocus,
   onStopGeneration
-})=> {
+}) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [isMobile, setIsMobile] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  
+
   useEffect(() => {
-    const checkIfMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    
-    checkIfMobile();
-    window.addEventListener('resize', checkIfMobile);
-    
-    return () => {
-      window.removeEventListener('resize', checkIfMobile);
-    };
-  }, []);  // Gérer les événements du clavier
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.addEventListener('focus', () => {
-        // Suggestions désactivées
-        setShowSuggestions(false);
-        // Appeler le callback onInputFocus s'il est défini
-        if (onInputFocus) {
-          onInputFocus();
-        }
-      });
-      textareaRef.current.addEventListener('blur', () => setTimeout(() => setShowSuggestions(false), 200));
-    }
-    
-    return () => {
-      if (textareaRef.current) {
-        textareaRef.current.removeEventListener('focus', () => setShowSuggestions(false));
-        textareaRef.current.removeEventListener('blur', () => setShowSuggestions(false));
-      }
-    };
-  }, []);
-  
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const maxHeight = isMobile ? 60 : 80;
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, maxHeight)}px`;
-    }
-  }, [message, isMobile]);
-    const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmedMessage = message.trim();
-    
-    if (trimmedMessage || selectedFile) {
-      onSendMessage(trimmedMessage, ragMode ? 'rag' : 'standard', selectedFile);
-      setMessage('');
-    }
-  };
-  
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      const trimmedMessage = message.trim();
-      
-      if (trimmedMessage || selectedFile) {
-        onSendMessage(trimmedMessage, ragMode ? 'rag' : 'standard', selectedFile);
-        setMessage('');
-      }
-    }
-  };
-    const handleSuggestionClick = (suggestion: string) => {
-    // Fonction désactivée - ne place plus les suggestions dans l'input
-    // setMessage(suggestion);
-    
-    // Mettre le focus sur la zone de texte après avoir choisi une suggestion
     if (textareaRef.current) {
       textareaRef.current.focus();
     }
-    
-    // Si la suggestion concerne l'actualité, activer le mode RAG automatiquement
-    if (suggestion.toLowerCase().includes('dernières') || 
-        suggestion.toLowerCase().includes('actualités') || 
-        suggestion.toLowerCase().includes('récents') ||
-        suggestion.toLowerCase().includes('situation actuelle')) {
-      onRagModeChange(true);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !loading) {
+        e.preventDefault();
+        if (message.trim()) {
+          handleSendMessage();
+        }
+      }
+    };
+
+    const currentTextarea = textareaRef.current;
+
+    if (currentTextarea) {
+      currentTextarea.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      if (currentTextarea) {
+        currentTextarea.removeEventListener('keydown', handleKeyDown);
+      }
+    };
+  }, [message, loading]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (onInputFocus) {
+        onInputFocus();
+      }
+    };
+
+    const currentTextarea = textareaRef.current;
+    if (currentTextarea) {
+      currentTextarea.addEventListener('focus', handleFocus);
+    }
+
+    return () => {
+      if (currentTextarea) {
+        currentTextarea.removeEventListener('focus', handleFocus);
+      }
+    };
+  }, [onInputFocus]);
+
+  const handleSendMessage = () => {
+    if (message.trim()) {
+      onSendMessage(message, ragMode ? 'rag' : 'standard', selectedFile);
+      setMessage('');
     }
   };
-  
+
   return (
-    <form onSubmit={handleSubmit} className="relative py-0.5 pb-6 sm:pb-8 md:pb-4 mx-3 sm:mx-4">
+    <form onSubmit={(e) => e.preventDefault()} className="relative py-0.5 pb-6 sm:pb-8 md:pb-4 mx-3 sm:mx-4">
       <div className="flex items-center justify-end mb-2 gap-2">
-        <div 
+        <div
           onClick={() => onRagModeChange(!ragMode)}
           className={`relative flex items-center cursor-pointer gap-1.5 rounded-full px-2.5 py-1 transition-all duration-300 backdrop-blur-sm
             ${ragMode
@@ -124,28 +97,28 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 ? 'bg-gradient-to-r from-blue-600/40 to-cyan-500/40 border border-blue-500/60 shadow-md shadow-blue-500/30'
                 : 'bg-gradient-to-r from-blue-200/90 to-cyan-200/90 border border-blue-300/70 shadow-md shadow-blue-300/30'
               : theme === 'dark'
-                ? 'bg-gray-800/70 border border-gray-700/80 hover:bg-gray-700/50' 
+                ? 'bg-gray-800/70 border border-gray-700/80 hover:bg-gray-700/50'
                 : 'bg-gray-100/90 border border-gray-200/70 hover:bg-gray-200/70'
             }`}
         >
           <span className={`text-xs font-medium tracking-wider transition-all duration-300
-            ${ragMode 
+            ${ragMode
               ? theme === 'dark' ? 'text-blue-200' : 'text-blue-700'
               : theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
             {ragMode ? 'RAG' : 'STD'}
           </span>
-          
+
           <div className={`relative w-8 h-4 flex items-center transition-all duration-300 rounded-full
             ${ragMode
               ? theme === 'dark' ? 'bg-gradient-to-r from-blue-700 to-cyan-600' : 'bg-gradient-to-r from-blue-400 to-cyan-400'
               : theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`}>
             <span className={`absolute w-3 h-3 rounded-full transition-all duration-300 transform shadow-md
-              ${ragMode 
-                ? 'translate-x-5 bg-white' 
+              ${ragMode
+                ? 'translate-x-5 bg-white'
                 : 'translate-x-0.5 bg-gray-100'}`}
             />
           </div>
-          
+
           {ragMode && (
             <>
               <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping opacity-60"></span>
@@ -157,11 +130,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
       {selectedFile && (
         <div className={`flex items-center gap-1.5 p-1.5 mb-1.5 rounded-lg backdrop-blur-sm
-          ${theme === 'dark' 
-            ? 'bg-blue-900/20 border border-blue-700/50 shadow-sm shadow-blue-500/10' 
+          ${theme === 'dark'
+            ? 'bg-blue-900/20 border border-blue-700/50 shadow-sm shadow-blue-500/10'
             : 'bg-blue-50/90 border border-blue-200 shadow-sm shadow-blue-300/10'}`}
         >
-          <div className={`p-1 rounded 
+          <div className={`p-1 rounded
             ${theme === 'dark' ? 'bg-blue-800/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -172,12 +145,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
               {selectedFile.name}
             </p>
           </div>
-          <button 
+          <button
             type="button"
             onClick={onCancelFileUpload}
             className={`p-1 rounded-full transition-all
-              ${theme === 'dark' 
-                ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/70' 
+              ${theme === 'dark'
+                ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/70'
                 : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/70'}`}
             title="Annuler"
           >
@@ -189,27 +162,19 @@ const ChatInput: React.FC<ChatInputProps> = ({
       )}
 
       <div className={`flex items-center gap-0 relative transition-all duration-200 rounded-2xl overflow-hidden backdrop-blur-sm shadow-lg
-        ${ragMode 
+        ${ragMode
           ? theme === 'dark'
             ? 'shadow-[0_0_15px_rgba(6,182,212,0.15)] border border-blue-700/50 bg-gradient-to-r from-gray-900/90 via-gray-800/80 to-gray-900/90'
-            : 'shadow-[0_0_15px_rgba(6,182,212,0.08)] border border-blue-200/80 bg-gradient-to-r from-white/95 via-blue-50/60 to-white/95' 
+            : 'shadow-[0_0_15px_rgba(6,182,212,0.08)] border border-blue-200/80 bg-gradient-to-r from-white/95 via-blue-50/60 to-white/95'
           : theme === 'dark'
             ? 'shadow-[0_0_10px_rgba(30,41,59,0.3)] border border-gray-700/80 bg-gray-900/80'
             : 'shadow-[0_0_10px_rgba(241,245,249,0.5)] border border-gray-200/80 bg-white/95'}`}>
-          {/* Composant pour les suggestions intelligentes - désactivé */}
-        {/* <SmartSuggestions 
-          inputText={message}
-          onSuggestionClick={handleSuggestionClick}
-          visible={showSuggestions && !loading}
-          previousMessages={previousMessages}
-          ragMode={ragMode}
-        /> */}
         <button
           type="button"
           onClick={onFileUploadClick}
           className={`h-auto self-stretch px-2 sm:px-3 flex items-center justify-center transition-all duration-300
-            ${theme === 'dark' 
-              ? 'bg-gray-800/80 hover:bg-gray-700/80 text-gray-400 hover:text-cyan-300 border-r border-gray-700/80' 
+            ${theme === 'dark'
+              ? 'bg-gray-800/80 hover:bg-gray-700/80 text-gray-400 hover:text-cyan-300 border-r border-gray-700/80'
               : 'bg-gray-100/80 hover:bg-gray-200/80 text-gray-500 hover:text-cyan-600 border-r border-gray-200/80'}`}
           title="Ajouter un fichier"
         >
@@ -217,40 +182,39 @@ const ChatInput: React.FC<ChatInputProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
           </svg>
         </button>
-        
+
         <div className="relative w-full">
-          <textarea 
+          <textarea
             ref={textareaRef}
             className={`w-full resize-none py-2 px-3 transition-colors duration-200 focus:ring-0
-              ${theme === 'dark' 
-                ? 'bg-transparent text-white placeholder-gray-400 focus:outline-none' 
+              ${theme === 'dark'
+                ? 'bg-transparent text-white placeholder-gray-400 focus:outline-none'
                 : 'bg-transparent text-gray-800 placeholder-gray-400 focus:outline-none'}`}
-            placeholder={selectedFile 
-              ? `Décrire...` 
-              : ragMode 
-                ? `Posez votre question...` 
+            placeholder={selectedFile
+              ? `Décrire...`
+              : ragMode
+                ? `Posez votre question...`
                 : `Écrivez un message...`}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
             disabled={loading}
             rows={1}
-            style={{minHeight: '40px', maxHeight: isMobile ? '60px' : '80px'}}
+            style={{ minHeight: '40px', maxHeight: '80px' }}
           />
           {ragMode && (
-            <div className={`absolute bottom-0.5 left-3 right-3 h-0.5 opacity-30 rounded-full overflow-hidden 
+            <div className={`absolute bottom-0.5 left-3 right-3 h-0.5 opacity-30 rounded-full overflow-hidden
               ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}`}>
               <div className={`h-full w-1/4 ${theme === 'dark' ? 'bg-cyan-500' : 'bg-cyan-400'} animate-pulse-slow`}></div>
             </div>
           )}
         </div>
-          {loading ? (
-          <button 
+        {loading ? (
+          <button
             type="button"
             onClick={onStopGeneration}
             className={`h-auto self-stretch px-3 sm:px-4 flex items-center justify-center flex-shrink-0 transition-colors
-              ${theme === 'dark' 
-                ? 'bg-red-600/80 hover:bg-red-700 text-white' 
+              ${theme === 'dark'
+                ? 'bg-red-600/80 hover:bg-red-700 text-white'
                 : 'bg-red-500 hover:bg-red-600 text-white'}`}
             title="Arrêter la génération"
           >
@@ -261,7 +225,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         ) : (
           <button
             className={`h-auto self-stretch px-3 sm:px-4 flex items-center justify-center flex-shrink-0 transition-all duration-300 disabled:opacity-50 group
-              ${message.trim() && !loading 
+              ${message.trim() && !loading
                 ? selectedFile
                   ? `bg-gradient-to-br from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-white shadow-inner`
                   : ragMode
@@ -270,7 +234,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 : theme === 'dark'
                   ? 'bg-gray-800/90 text-gray-400 hover:bg-gray-700/90 hover:text-gray-300'
                   : 'bg-gray-100/90 text-gray-400 hover:bg-gray-200/90 hover:text-gray-500'}`}
-            onClick={handleSubmit}
+            onClick={handleSendMessage}
             disabled={!message.trim()}
             type="button"
             aria-label="Envoyer"

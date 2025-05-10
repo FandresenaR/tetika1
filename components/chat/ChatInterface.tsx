@@ -903,11 +903,14 @@ const ChatInterface: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {messages.map((message) => {
-                      // Ensure message sources follow the expected format by the Message component
+                    {messages.map((message) => {                      // Ensure message sources follow the expected format by the Message component
                       // This fixes the type error between url and link properties
                       const transformedMessage = {
                         ...message,
+                        conversationContext: messages.map(m => ({ 
+                          role: m.role, 
+                          content: m.content 
+                        })),
                         sources: message.sources?.map(source => ({
                           title: source.title,
                           link: source.url, // Map url to the link property expected by the Message component
@@ -943,18 +946,28 @@ const ChatInterface: React.FC = () => {
             </div>
             
             {/* Input area - fixed at the bottom with minimal space */}
-            <div className={`border-t sticky bottom-0 z-10 transition-all duration-300
-              ${theme === 'dark' 
-                ? 'border-gray-800 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 shadow-lg shadow-blue-900/10' 
-                : 'border-gray-200 bg-gradient-to-r from-white via-gray-50 to-white shadow-lg shadow-blue-200/10'}`}>              <div className="max-w-4xl mx-auto">                <ChatInput 
-                  onSendMessage={handleSendMessage} 
+            <div 
+              className={`border-t sticky bottom-0 z-10 transition-all duration-300 ${
+                theme === 'dark' 
+                  ? 'border-gray-800 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 shadow-lg shadow-blue-900/10' 
+                  : 'border-gray-200 bg-gradient-to-r from-white via-gray-50 to-white shadow-lg shadow-blue-200/10'
+              }`}
+            >
+              <div className="max-w-4xl mx-auto">
+                <ChatInput 
+                  onSendMessage={handleSendMessage}
                   loading={loading}
                   theme={theme}
-                  ragMode={ragMode}                  onRagModeChange={toggleRagMode}
+                  ragMode={ragMode}
+                  onRagModeChange={toggleRagMode}
                   onFileUploadClick={() => setShowFileUploader(true)}
                   selectedFile={selectedFile}
-                  onCancelFileUpload={() => setSelectedFile(null)}                  previousMessages={messages.map(m => ({ role: m.role, content: m.content }))}
-                  onInputFocus={() => {}} // Fonction masquant les suggestions supprimée
+                  onCancelFileUpload={() => setSelectedFile(null)}
+                  _previousMessages={messages.map(m => ({ 
+                    role: m.role, 
+                    content: m.content 
+                  }))}
+                  onInputFocus={() => {}}
                   onStopGeneration={handleStopGeneration}
                 />
               </div>
