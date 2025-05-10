@@ -1,6 +1,26 @@
 import axios, { AxiosError } from 'axios';
 import { AIModel, Message } from '../types';
 
+// Helper function to extract content from truncated Mistral model responses
+function extractContentFromTruncatedResponse(responseText: string): string | null {
+  // Try several pattern matching approaches
+  const patterns = [
+    /"content"\s*:\s*"([^"]+)"/,       // Standard JSON format
+    /"content"\s*:\s*'([^']+)'/,       // Alternative quote format
+    /"message"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/,  // Nested message format
+    /"choices"\s*:\s*\[\s*{[^}]*"message"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/ // Full nested format
+  ];
+  
+  for (const pattern of patterns) {
+    const match = responseText.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
+}
+
 // Fonction pour récupérer les clés API depuis le localStorage
 const getApiKeys = () => {
   // Determine if we're running on client or server side
@@ -133,9 +153,7 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       temperature: 0.7,
       max_tokens: 800,
       stream: stream
-    };
-    
-    // Logging du payload pour le diagnostic (sans imprimer toute la conversation)
+    };      // Logging du payload pour le diagnostic (sans imprimer toute la conversation)
     console.log('OpenRouter payload structure:', { 
       model: payload.model,
       messageCount: payload.messages.length,
@@ -149,14 +167,15 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       response = await axios({
         method: 'post',
         url: 'https://openrouter.ai/api/v1/chat/completions',
-        headers: headers,
-        data: payload,
+        headers: headers,        data: payload,
         timeout: 60000, // 60 secondes
         transformResponse: [(data) => {
           // Prevent JSON parse errors by capturing the raw response
           return { rawData: data };
         }]
-      });      // Parse the response safely
+      });
+      
+      // Parse the response safely
       let parsedData;
       try {
         if (response.data?.rawData) {
@@ -171,15 +190,27 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
         let content = null;
         
         if (typeof response.data?.rawData === 'string') {
-          // Look for content field in the raw string
-          const contentMatch = response.data.rawData.match(/"content"\s*:\s*"([^"]+)"/);
-          const deltaContentMatch = response.data.rawData.match(/"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/);
+          // Special handling for Mistral models which may have truncated responses
+          if (modelId.includes('mistral')) {
+            const mistralContentMatch = extractContentFromTruncatedResponse(response.data.rawData);
+            if (mistralContentMatch) {
+              content = mistralContentMatch;
+              console.log("Successfully extracted content from Mistral response");
+            }
+          }
           
-          if (contentMatch && contentMatch[1]) {
-            content = contentMatch[1];
-          } else if (deltaContentMatch && deltaContentMatch[1]) {
-            // Special handling for DeepSeek models that use delta.content format
-            content = deltaContentMatch[1];
+          // If no content yet, try standard pattern matching
+          if (!content) {
+            // Look for content field in the raw string
+            const contentMatch = response.data.rawData.match(/"content"\s*:\s*"([^"]+)"/);
+            const deltaContentMatch = response.data.rawData.match(/"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/);
+            
+            if (contentMatch && contentMatch[1]) {
+              content = contentMatch[1];
+            } else if (deltaContentMatch && deltaContentMatch[1]) {
+              // Special handling for DeepSeek models that use delta.content format
+              content = deltaContentMatch[1];
+            }
           }
           
           // If we still don't have content, try to repair truncated JSON

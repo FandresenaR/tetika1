@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Message, ChatMode } from '@/types';
 import { callAIModel } from '@/lib/api';
 import { enhanceWithRAG } from '@/lib/rag-helper';
+import { extractMistralResponse, extractFromTruncatedResponse } from '@/lib/llm-utils';
 
 interface Source {
   title: string;
@@ -265,11 +266,7 @@ ${ragContext}`,
         aiResponse = apiResponse.content;
       } else if (typeof apiResponse === 'string') {
         // For providers that might just return a string
-        aiResponse = apiResponse;} else if (apiResponse === null || apiResponse === undefined) {
-        // Null or undefined response
-        console.error("Null or undefined API response");
-        aiResponse = "Je suis désolé, je n'ai pas pu obtenir une réponse du modèle. Veuillez réessayer.";
-      } else {
+        aiResponse = apiResponse;} else {
         // Try to extract any text we can find in the response
         let responseStr = '';
         try {
@@ -278,9 +275,34 @@ ${ragContext}`,
           console.error("Failed to stringify API response:", jsonError);
           responseStr = String(apiResponse);
         }
+          console.error("Unexpected API response format:", responseStr.substring(0, 200));
         
-        console.error("Unexpected API response format:", responseStr.substring(0, 200));
+        // Special handling for Mistral models which often have truncated responses
+        if (model.id.includes('mistral')) {
+          const mistralContent = extractMistralResponse(responseStr);
+          if (mistralContent) {
+            aiResponse = mistralContent;
+            console.log("Successfully extracted content from Mistral model using helper function");
+            return NextResponse.json({
+              message: aiResponse,
+              sources: currentMode === 'rag' ? sources : [],
+              autoActivatedRAG: autoActivatedRAG
+            });
+          }
+        }
         
+        // If we still don't have content, try the generic extractor
+        const extractedContent = extractFromTruncatedResponse(responseStr);
+        if (extractedContent) {
+          aiResponse = extractedContent;
+          console.log("Successfully extracted content using generic extractor");
+          return NextResponse.json({
+            message: aiResponse,
+            sources: currentMode === 'rag' ? sources : [],
+            autoActivatedRAG: autoActivatedRAG
+          });
+        }
+          // Fall back to original extraction method if helpers failed
         // Try to extract the message from a potentially truncated response
         // First, try to match any content in a standard format
         const contentMatch = responseStr.match(/"content"\s*:\s*"([^"]+)"/);
