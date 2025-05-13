@@ -157,16 +157,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
             </svg>
           </button>
         </div>
-      )}
-
-      <div className={`flex items-center gap-0 relative transition-all duration-200 rounded-2xl overflow-hidden backdrop-blur-sm shadow-lg
+      )}      <div className={`flex items-center gap-0 relative transition-all duration-200 rounded-2xl overflow-hidden backdrop-blur-sm shadow-lg
         ${ragMode
           ? theme === 'dark'
             ? 'shadow-[0_0_15px_rgba(6,182,212,0.15)] border border-blue-700/50 bg-gradient-to-r from-gray-900/90 via-gray-800/80 to-gray-900/90'
             : 'shadow-[0_0_15px_rgba(6,182,212,0.08)] border border-blue-200/80 bg-gradient-to-r from-white/95 via-blue-50/60 to-white/95'
           : theme === 'dark'
             ? 'shadow-[0_0_10px_rgba(30,41,59,0.3)] border border-gray-700/80 bg-gray-900/80'
-            : 'shadow-[0_0_10px_rgba(241,245,249,0.5)] border border-gray-200/80 bg-white/95'}`}>
+            : 'shadow-[0_0_10px_rgba(241,245,249,0.5)] border border-gray-200/80 bg-white/95'}`}>          {/* Le bouton des paramètres a été déplacé directement dans le corps de l'application */}
+        
         <button
           type="button"
           onClick={onFileUploadClick}
@@ -178,7 +177,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-4.5 sm:w-4.5 transform transition-all file-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
           </svg>
-        </button>        <div className="relative w-full">
+        </button><div className="relative w-full">
           <textarea
             ref={textareaRef}
             className={`w-full resize-none py-2 px-3 transition-colors duration-200 focus:ring-0 min-h-[40px] max-h-[80px]
@@ -252,11 +251,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
             transform: scaleX(1);
             transform-origin: left;
             opacity: 0.8;
-          }
-        }
+          }        }
         .animate-pulse-slow {
           animation: pulse-slow 3s infinite;
         }
+          /* Les styles pour le bouton des paramètres mobile ont été déplacés directement dans le composant */
+        
         .file-icon:hover {
           transform: scale(1.1);
         }

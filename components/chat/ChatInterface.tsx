@@ -4,8 +4,10 @@ import ChatInput from './ChatInput';
 import { ModelSelector } from './ModelSelector';
 import HistorySidebar from './HistorySidebar';
 import CodeSidebar from './CodeSidebar';
+import { moveSettingsButton } from '@/lib/mobile-settings-mover';
 import { FileUploader } from '@/components/ui/FileUploader';
 import SpeechSynthesisCheck from '@/components/ui/SpeechSynthesisCheck';
+import SettingsButton from '@/components/ui/SettingsButton';
 import { Message, ChatMode, ChatSession } from '@/types';
 import { openRouterModels, getModelById } from '@/lib/models';
 import { isImageFile, isVideoFile, createMediaDescription, createImageContentWithBase64 } from '@/lib/media-utils';
@@ -49,8 +51,7 @@ const ChatInterface: React.FC = () => {
   // État pour détecter si l'écran est mobile
   const [isMobile, setIsMobile] = useState(false);
   // Anciennement pour les suggestions RAG - supprimé
-  
-  // Fonction pour détecter si on est sur mobile
+    // Fonction pour détecter si on est sur mobile
   useEffect(() => {
     const checkIfMobile = () => {
       const isMobileView = window.innerWidth < 768; // 768px est le breakpoint md de tailwind
@@ -67,6 +68,12 @@ const ChatInterface: React.FC = () => {
     return () => {
       window.removeEventListener('resize', checkIfMobile);
     };
+  }, []);
+  
+  // Effet pour déplacer le bouton des paramètres sur mobile
+  useEffect(() => {
+    // Activer la fonction qui déplace le bouton des paramètres
+    moveSettingsButton();
   }, []);
   
   // La sidebar sera toujours fixée à un état spécifique en fonction de l'appareil
@@ -383,7 +390,11 @@ const ChatInterface: React.FC = () => {
       // Create a new AbortController for this request
       abortController = new AbortController();
       
-      // Appel API pour obtenir la réponse
+      // Appel API pour obtenir la réponse      // Récupérer les clés API depuis le localStorage
+      const openRouterKey = localStorage.getItem('tetika-openrouter-key') || '';
+      const notdiamondKey = localStorage.getItem('tetika-notdiamond-key') || '';
+      const serpapiKey = localStorage.getItem('tetika-serpapi-key') || '';
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -394,7 +405,12 @@ const ChatInterface: React.FC = () => {
           messages: messagesForAPI,
           model: modelObject,
           mode: mode,
-          hasAttachedFile: !!currentFile
+          hasAttachedFile: !!currentFile,
+          apiKeys: {
+            openrouter: openRouterKey,
+            notdiamond: notdiamondKey,
+            serpapi: serpapiKey
+          }
         }),
       });
       
@@ -595,10 +611,11 @@ const ChatInterface: React.FC = () => {
       setShowCodeSidebar, 
       sidebarCode, 
       setSidebarCode 
-    }}>
-      <div className={`flex flex-col h-screen transition-colors duration-300 ${themeClasses}`}>
+    }}>      <div className={`flex flex-col h-screen transition-colors duration-300 ${themeClasses}`}>
         {/* Component to check if the browser supports speech synthesis */}
         <SpeechSynthesisCheck />
+        {/* Bouton de paramètres */}
+        <SettingsButton />
         {/* Header with model selector - now fixed at the top */}
         <div className={`sticky top-0 z-20 flex items-center justify-between px-2 py-2 border-b transition-all duration-300 ${headerClasses} backdrop-blur shadow-lg`}>
           <div className="flex items-center gap-2.5">
@@ -1059,6 +1076,36 @@ const ChatInterface: React.FC = () => {
 const Footer: React.FC<{ theme: 'dark' | 'light' }> = ({ theme }) => {
   const currentYear = new Date().getFullYear();
   
+  // Vérifier si on est sur mobile
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkIfMobile();
+    window.addEventListener('resize', checkIfMobile);
+    
+    return () => window.removeEventListener('resize', checkIfMobile);
+  }, []);
+  
+  // Version simplifiée pour mobile
+  if (isMobile) {
+    return (
+      <footer className={`w-full py-1.5 text-center text-[10px] border-t ${
+        theme === 'dark' 
+          ? 'bg-gray-900/60 border-gray-800/50 text-gray-500' 
+          : 'bg-white/60 border-gray-200/50 text-gray-400'
+      }`}>
+        <div className="flex justify-center items-center">
+          <span>© {currentYear} Fandresena</span>
+        </div>
+      </footer>
+    );
+  }
+  
+  // Version complète pour desktop
   return (
     <footer className={`w-full py-3 px-4 text-center text-xs border-t ${
       theme === 'dark' 
@@ -1117,8 +1164,7 @@ const Footer: React.FC<{ theme: 'dark' | 'light' }> = ({ theme }) => {
         </a>
         
         <span className="hidden sm:inline">•</span>
-        
-        <a 
+          <a 
           href="/politique-ia" 
           className={`hover:underline ${theme === 'dark' ? 'text-gray-400 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}
         >

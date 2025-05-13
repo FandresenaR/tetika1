@@ -32,7 +32,7 @@ const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, model, mode, hasAttachedFile } = await request.json();
+    const { messages, model, mode, hasAttachedFile, apiKeys } = await request.json();
     
     // Vérifier que les données requises sont présentes
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -125,10 +125,9 @@ Si tu as les informations nécessaires, ignore cette instruction et réponds nor
             timestamp: Date.now(),
             mode: 'standard' as ChatMode
           });
-          
-          // Faire une première requête pour vérifier si le modèle a besoin d'informations externes
+            // Faire une première requête pour vérifier si le modèle a besoin d'informations externes
           console.log("Vérification si le modèle possède les informations nécessaires...");
-          const checkResponse = await callAIModel(model, messagesForAI);
+          const checkResponse = await callAIModel(model, messagesForAI, false, apiKeys);
           
           // Extraire la réponse pour vérifier si RAG est nécessaire
           let checkResponseText = "";
@@ -168,13 +167,20 @@ Si tu as les informations nécessaires, ignore cette instruction et réponds nor
     if (currentMode === 'rag') {
       // Get the last user message
       const lastUserMessage = messages.findLast((msg: Message) => msg.role === 'user');
-      
-      if (lastUserMessage) {
-        // Get the SerpAPI key from environment variables
-        const serpApiKey = process.env.SERPAPI_API_KEY || '';
+        if (lastUserMessage) {
+        // Utiliser la clé SerpAPI fournie par le client si disponible, sinon utiliser celle du serveur
+        let serpApiKey = '';
+        
+        if (apiKeys && apiKeys.serpapi) {
+          // Utiliser la clé fournie par le client
+          serpApiKey = apiKeys.serpapi;
+        } else {
+          // Fallback à la clé du serveur
+          serpApiKey = process.env.SERPAPI_API_KEY || '';
+        }
         
         if (!serpApiKey) {
-          console.error('SERPAPI_API_KEY environment variable is not set');
+          console.error('Aucune clé SerpAPI configurée');
           return NextResponse.json({ error: 'SerpAPI key is not configured' }, { status: 500 });
         }
         
@@ -244,9 +250,8 @@ ${ragContext}`,
           mode: mode as ChatMode
         });
       }
-    }
-      // Appeler le modèle d'IA avec le message enrichi
-    const apiResponse = await callAIModel(model, messagesForAI);
+    }    // Appeler le modèle d'IA avec le message enrichi et les clés API fournies par le client
+    const apiResponse = await callAIModel(model, messagesForAI, false, apiKeys);
       // Extract the AI response content more safely
     let aiResponse = "";
     try {

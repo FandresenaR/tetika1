@@ -81,18 +81,25 @@ export function isModelFree(modelId: string) {
 }
 
 // API OpenRouter
-export async function callOpenRouterAPI(modelId: string, messages: Message[], stream = false) {
-  const { openrouter: OPENROUTER_API_KEY } = getApiKeys();
-  // Comment out unused variable to avoid TypeScript warning
-  // const _isUsingFreeModel = isModelFree(modelId);
+export async function callOpenRouterAPI(modelId: string, messages: Message[], stream = false, clientApiKey?: string) {
+  // Utiliser la clé API fournie par le client si elle existe, sinon utiliser celle des paramètres du serveur
+  let OPENROUTER_API_KEY = '';
+  
+  if (clientApiKey) {
+    // Utiliser la clé fournie par le client
+    OPENROUTER_API_KEY = clientApiKey;
+  } else {
+    // Fallback aux clés du serveur
+    const apiKeys = getApiKeys();
+    OPENROUTER_API_KEY = apiKeys.openrouter;
+  }
   
   try {
     console.log('Calling OpenRouter API with model:', modelId);
-    
-    // Check if API key exists and is valid
+      // Check if API key exists and is valid
     if (!OPENROUTER_API_KEY) {
       console.error('No OpenRouter API key provided');
-      throw new Error('OpenRouter API key not configured. Please add your API key in settings.');
+      throw new Error('OpenRouter API key not configured. Please add your API key in settings. (Clé API OpenRouter non configurée. Veuillez ajouter votre clé API dans les paramètres.)');
     }
     
     // Validate API key format
@@ -384,8 +391,23 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
 }
 
 // API NotDiamond - Implémentation avec fallback vers OpenRouter
-export async function callNotDiamondAPI(modelId: string, messages: Message[], stream = false) {
-  const { notdiamond: NOTDIAMOND_API_KEY, openrouter: OPENROUTER_API_KEY } = getApiKeys();
+export async function callNotDiamondAPI(modelId: string, messages: Message[], stream = false, clientApiKey?: string) {
+  // Utiliser la clé API fournie par le client si elle existe, sinon utiliser celle des paramètres du serveur
+  let NOTDIAMOND_API_KEY = '';
+  let OPENROUTER_API_KEY = '';
+  
+  if (clientApiKey) {
+    // Utiliser la clé fournie par le client
+    NOTDIAMOND_API_KEY = clientApiKey;
+    // Pour le fallback, nous devons toujours avoir les clés du serveur
+    const apiKeys = getApiKeys();
+    OPENROUTER_API_KEY = apiKeys.openrouter;
+  } else {
+    // Fallback aux clés du serveur
+    const apiKeys = getApiKeys();
+    NOTDIAMOND_API_KEY = apiKeys.notdiamond;
+    OPENROUTER_API_KEY = apiKeys.openrouter;
+  }
   
   if (!NOTDIAMOND_API_KEY) {
     throw new Error('NotDiamond API key not configured');
@@ -527,18 +549,21 @@ export async function searchWithSerpAPI(query: string) {
       }
     };
   }
-}
-
-// Sélection de l'API en fonction du modèle
-export async function callAIModel(model: AIModel, messages: Message[], stream = false) {
+}  // Sélection de l'API en fonction du modèle
+export async function callAIModel(model: AIModel, messages: Message[], stream = false, apiKeys?: { openrouter?: string, notdiamond?: string, serpapi?: string }) {
   if (!model) {
     throw new Error('No model specified');
   }
   
+  console.log(`Appel au modèle ${model.id} avec le provider ${model.provider}`);
+  if (apiKeys) {
+    console.log(`Clés API fournies par le client: OpenRouter=${!!apiKeys.openrouter}, NotDiamond=${!!apiKeys.notdiamond}, SerpAPI=${!!apiKeys.serpapi}`);
+  }
+  
   if (model.provider === 'openrouter') {
-    return callOpenRouterAPI(model.id, messages, stream);
+    return callOpenRouterAPI(model.id, messages, stream, apiKeys?.openrouter);
   } else if (model.provider === 'notdiamond') {
-    return callNotDiamondAPI(model.id, messages, stream);
+    return callNotDiamondAPI(model.id, messages, stream, apiKeys?.notdiamond);
   } else {
     throw new Error(`Provider not supported: ${model.provider}`);
   }

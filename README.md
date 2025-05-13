@@ -2,6 +2,10 @@
 
 Tetika is a futuristic, secure AI chat interface built with Next.js. It provides a powerful conversational AI experience with support for multiple language models, web search enhancement, and file analysis capabilities, including images and videos.
 
+## Versions
+- **v0.2.0** (Current): Added Settings button and improved local API key management
+- **v0.1.0**: Initial release with multi-model support and RAG capabilities
+
 ## Features
 
 - **Multi-model support**: Connect to various AI models through OpenRouter
@@ -11,7 +15,8 @@ Tetika is a futuristic, secure AI chat interface built with Next.js. It provides
   - Analyze images using AI vision capabilities with compatible models
   - Extract metadata from video files
 - **Modern UI**: Clean, responsive interface built with Tailwind CSS
-- **Secure by design**: Your API keys are stored locally, not on any server
+- **Secure by design**: Your API keys are stored locally in browser storage
+- **Settings Management**: Convenient settings button to manage API keys and preferences
 
 ## Getting Started
 
