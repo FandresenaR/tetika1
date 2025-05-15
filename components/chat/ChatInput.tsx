@@ -6,7 +6,9 @@ interface ChatInputProps {
   loading: boolean;
   theme: 'dark' | 'light';
   ragMode: boolean;
+  deepResearchMode?: boolean;
   onRagModeChange: (enabled: boolean) => void;
+  onDeepResearchModeChange?: (enabled: boolean) => void;
   onFileUploadClick: () => void;
   selectedFile: File | null;
   onCancelFileUpload: () => void;
@@ -20,21 +22,29 @@ const ChatInput: React.FC<ChatInputProps> = ({
   loading,
   theme,
   ragMode,
-  onRagModeChange,  onFileUploadClick,
+  deepResearchMode,
+  onRagModeChange,
+  onDeepResearchModeChange,
+  onFileUploadClick,
   selectedFile,
   onCancelFileUpload,
   // Removed unused previousMessages parameter by prefixing with underscore
   onInputFocus,
   onStopGeneration
 }) => {
-  const [message, setMessage] = useState('');  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [message, setMessage] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSendMessage = useCallback(() => {
     if (message.trim()) {
-      onSendMessage(message, ragMode ? 'rag' : 'standard', selectedFile);
+      let mode: ChatMode = 'standard';
+      if (ragMode) mode = 'rag';
+      if (deepResearchMode) mode = 'deep-research';
+      
+      onSendMessage(message, mode, selectedFile);
       setMessage('');
     }
-  }, [message, ragMode, selectedFile, onSendMessage]);
+  }, [message, ragMode, deepResearchMode, selectedFile, onSendMessage]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -124,6 +134,47 @@ const ChatInput: React.FC<ChatInputProps> = ({
             </>
           )}
         </div>
+
+        {/* Deep Research Mode Toggle */}
+        {onDeepResearchModeChange && (
+          <div
+            onClick={() => onDeepResearchModeChange(!deepResearchMode)}
+            className={`relative flex items-center cursor-pointer gap-1.5 rounded-full px-2.5 py-1 transition-all duration-300 backdrop-blur-sm
+              ${deepResearchMode
+                ? theme === 'dark'
+                  ? 'bg-gradient-to-r from-purple-600/40 to-indigo-500/40 border border-purple-500/60 shadow-md shadow-purple-500/30'
+                  : 'bg-gradient-to-r from-purple-200/90 to-indigo-200/90 border border-purple-300/70 shadow-md shadow-purple-300/30'
+                : theme === 'dark'
+                  ? 'bg-gray-800/70 border border-gray-700/80 hover:bg-gray-700/50'
+                  : 'bg-gray-100/90 border border-gray-200/70 hover:bg-gray-200/70'
+              }`}
+          >
+            <span className={`text-xs font-medium tracking-wider transition-all duration-300
+              ${deepResearchMode
+                ? theme === 'dark' ? 'text-purple-200' : 'text-purple-700'
+                : theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+              {deepResearchMode ? 'DEEP' : 'STD'}
+            </span>
+
+            <div className={`relative w-8 h-4 flex items-center transition-all duration-300 rounded-full
+              ${deepResearchMode
+                ? theme === 'dark' ? 'bg-gradient-to-r from-purple-700 to-indigo-600' : 'bg-gradient-to-r from-purple-400 to-indigo-400'
+                : theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`}>
+              <span className={`absolute w-3 h-3 rounded-full transition-all duration-300 transform shadow-md
+                ${deepResearchMode
+                  ? 'translate-x-5 bg-white'
+                  : 'translate-x-0.5 bg-gray-100'}`}
+              />
+            </div>
+
+            {deepResearchMode && (
+              <>
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping opacity-60"></span>
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {selectedFile && (

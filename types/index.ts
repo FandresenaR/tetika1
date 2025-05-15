@@ -17,6 +17,8 @@ export interface Message {
     content: string; // Contenu du fichier encodé en base64 ou texte brut
   };
   autoActivatedRAG?: boolean; // Indique si le mode RAG a été activé automatiquement
+  reasoning?: string; // Added for Deep Research mode to store reasoning steps
+  reasoningSources?: Array<{reference: string, sourceIndex: number}>; // Sources referenced in reasoning
 }
 
 export interface ChatSession {
@@ -51,4 +53,4 @@ export interface AIProviderConfig {
   apiKey: string;
 }
 
-export type ChatMode = 'standard' | 'rag';
+export type ChatMode = 'standard' | 'rag' | 'deep-research';

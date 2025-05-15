@@ -3,6 +3,8 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import { Message as MessageType } from '@/types';
 import { speakText, stopSpeech, detectLanguage } from '@/lib/speech-utils';
 import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { atomDark, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Define the code sidebar context type
 interface CodeSidebarContextType {
@@ -29,11 +31,12 @@ type SourceType = {
   position?: number;
 };
 
-interface MessageProps {
-  message: MessageType & { 
-    mode?: 'rag' | string; 
+interface MessageProps {  message: MessageType & { 
+    mode?: 'rag' | 'deep-research' | string; 
     sources?: SourceType[];
     autoActivatedRAG?: boolean;
+    reasoning?: string;
+    reasoningSources?: Array<{reference: string, sourceIndex: number}>;
     conversationContext?: Array<{ role: string; content: string }>;
   };
   theme?: 'dark' | 'light';
@@ -299,6 +302,19 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
 
   const isShortMessage = !isAI && message.content && message.content.length < 50;
 
+  // Debug logs for Deep Research mode
+  useEffect(() => {
+    if (isAI && message.mode === 'deep-research') {
+      console.log('Deep Research message:', {
+        hasReasoning: !!message.reasoning,
+        reasoningLength: message.reasoning?.length || 0,
+        contentLength: message.content?.length || 0,
+        messageMode: message.mode,
+        messageId: message.id
+      });
+    }
+  }, [message, isAI]);
+
   const timestamp = new Date(message.timestamp);
   const formattedDate = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -409,6 +425,158 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
         <span className="text-xs truncate max-w-[100px]">{message.attachedFile.name}</span>
       </span>
     );
+  };  // Function to render reasoning text with source references highlighted
+  const renderReasoningWithSources = (
+    reasoning: string, 
+    reasoningSources?: Array<{reference: string, sourceIndex: number}>,
+    sources?: SourceType[]
+  ) => {
+    console.log("renderReasoningWithSources called with:", {
+      hasReasoning: !!reasoning,
+      reasoningLength: reasoning?.length || 0,
+      hasReasoningSources: !!reasoningSources,
+      reasoningSourcesCount: reasoningSources?.length || 0,
+      hasSources: !!sources,
+      sourcesCount: sources?.length || 0
+    });
+    
+    // Early return if any required data is missing
+    if (!reasoning || !reasoningSources || reasoningSources.length === 0 || !sources || sources.length === 0) {
+      console.log("No reasoning sources or sources available - rendering plain reasoning");
+      return (
+        <div className="reasoning-content">
+          <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>
+            {reasoning || ''}
+          </ReactMarkdown>
+        </div>
+      );
+    }
+
+    console.log("Rendering reasoning with sources:", {
+      reasoningSourcesCount: reasoningSources.length,
+      sourcesCount: sources.length,
+      firstSource: reasoningSources[0],
+      sourceReferences: reasoningSources.map(s => s.reference).join(', ')
+    });
+
+    // Create a Map for efficient source lookup by index
+    const sourceMap = new Map<number, SourceType>();
+    sources.forEach((source, index) => {
+      sourceMap.set(index, source);
+    });
+
+    // Sort sources by position in text to process them in order
+    // Only include sources that actually appear in the reasoning text
+    const filteredSources = [...reasoningSources]
+      .map(source => ({
+        ...source,
+        position: reasoning.indexOf(source.reference)
+      }))
+      .filter(source => source.position !== -1)
+      .sort((a, b) => a.position - b.position);
+
+    console.log(`Sources after filtering: ${filteredSources.length}/${reasoningSources.length}`);
+
+    // If no valid sources found, just render the reasoning text as-is
+    if (filteredSources.length === 0) {
+      console.log("No source references found in reasoning text - rendering plain reasoning");
+      return (
+        <div className="reasoning-content">
+          <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>
+            {reasoning}
+          </ReactMarkdown>
+        </div>
+      );
+    }
+
+    // Generate a unique ID prefix for all keys to avoid conflicts
+    const uniqueId = `source-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Split the reasoning text at each source reference and build the parts array
+    let lastIndex = 0;
+    const parts: React.ReactElement[] = [];
+
+    filteredSources.forEach((source, idx) => {
+      const { reference: sourceRef, sourceIndex, position } = source;
+      
+      // Add text before the reference
+      if (position > lastIndex) {
+        const textBefore = reasoning.substring(lastIndex, position);
+        if (textBefore.trim()) {
+          parts.push(
+            <ReactMarkdown 
+              key={`${uniqueId}-text-${idx}`} 
+              remarkPlugins={[]} 
+              components={MarkdownComponents as Components}
+            >
+              {textBefore}
+            </ReactMarkdown>
+          );
+        }
+      }
+      
+      // Add the reference with styling
+      if (sourceIndex >= 0 && sourceMap.has(sourceIndex)) {
+        const sourceInfo = sourceMap.get(sourceIndex);
+        const url = sourceInfo ? getSourceUrl(sourceInfo) : '#';
+        
+        parts.push(
+          <span 
+            key={`${uniqueId}-ref-${idx}`}
+            className={`inline-flex items-center justify-center rounded-full min-w-[1.5rem] h-6 px-1 
+              font-medium cursor-pointer transition-all duration-300 mx-0.5
+              ${theme === 'dark' 
+                ? 'bg-blue-600/80 text-white hover:bg-blue-500/90' 
+                : 'bg-blue-400 text-black hover:bg-blue-300'}`}
+            onClick={() => {
+              if (url && url !== '#') {
+                window.open(url, '_blank', 'noopener,noreferrer');
+              }
+            }}
+            title={sourceInfo ? `${sourceInfo.title || 'Source'}: ${sourceInfo.snippet || 'No description'}` : 'Source information unavailable'}
+          >
+            {sourceRef}
+          </span>
+        );
+      } else {
+        // If source index is invalid, just show the reference as text
+        parts.push(
+          <span key={`${uniqueId}-plainref-${idx}`}>
+            {sourceRef}
+          </span>
+        );
+      }
+      
+      // Update the last position to continue from after this reference
+      lastIndex = position + sourceRef.length;
+    });
+    
+    // Add the remaining text after the last reference
+    if (lastIndex < reasoning.length) {
+      const textAfter = reasoning.substring(lastIndex);
+      if (textAfter.trim()) {
+        parts.push(
+          <ReactMarkdown 
+            key={`${uniqueId}-text-final`} 
+            remarkPlugins={[]} 
+            components={MarkdownComponents as Components}
+          >
+            {textAfter}
+          </ReactMarkdown>
+        );
+      }
+    }
+    
+    // Return all parts wrapped in a container div with appropriate class
+    return (
+      <div className="reasoning-with-sources">
+        {parts.length > 0 ? parts : (
+          <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>
+            {reasoning}
+          </ReactMarkdown>
+        )}
+      </div>
+    );
   };
 
   const processMessageContent = () => {
@@ -416,11 +584,31 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content || ''}</ReactMarkdown>;
     }
 
-    if (!message.sources || message.sources.length === 0) {
-      return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
+    // Add Conclusion header for Deep Research mode
+    if (isAI && message.mode === 'deep-research' && message.reasoning) {
+      // Create a fragment with a header for the conclusion section
+      return (
+        <>
+          <div className="flex items-center mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${
+              theme === 'dark' ? 'text-blue-300' : 'text-blue-700'
+            }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <h4 className={`ml-2 text-sm font-medium ${
+              theme === 'dark' ? 'text-blue-300' : 'text-blue-700'
+            }`}>
+              Conclusion
+            </h4>
+          </div>
+          <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>
+        </>
+      );
     }
 
-    // Fonction pour déterminer si une ligne est uniquement une référence source
+    if (!message.sources || message.sources.length === 0) {
+      return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
+    }    // Fonction pour déterminer si une ligne est uniquement une référence source
     const isSourceReferenceLine = (line: string) => {
       // Vérifie si la ligne contient uniquement une référence comme [1], [2], etc.
       const onlyRefRegex = /^\s*\[(\d+)\]\s*$|^\s*\((\d+)\)\s*$|^\s*(\d+)⃣\s*$|^\s*(\d+)️⃣\s*$/;
@@ -622,6 +810,11 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
 
   const getBgClasses = () => {
     if (isAI) {
+      if (message.mode === 'deep-research') {
+        return theme === 'dark'
+          ? 'bg-gradient-to-br from-purple-900/10 to-indigo-900/10 border-purple-800/30'
+          : 'bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200/80';
+      }
       if (isRagMode) {
         return theme === 'dark'
           ? 'bg-gradient-to-br from-blue-900/10 to-cyan-900/10 border-blue-800/30'
@@ -631,6 +824,11 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
         ? 'bg-gradient-to-br from-gray-900/70 to-gray-800/70 border-gray-700/80'
         : 'bg-white border-gray-200/80';
     } else {
+      if (message.mode === 'deep-research') {
+        return theme === 'dark'
+          ? 'bg-gradient-to-br from-purple-800/20 to-indigo-900/20 border-purple-700/30'
+          : 'bg-gradient-to-br from-purple-100/90 to-indigo-50/90 border-purple-200';
+      }
       if (isRagMode) {
         return theme === 'dark'
           ? 'bg-gradient-to-br from-blue-800/20 to-blue-900/20 border-blue-700/30'
@@ -742,17 +940,88 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
               )}
               {formattedDate}
             </span>
-          </div>
-
-          <div className={`prose break-words prose-headings:mt-4 prose-headings:mb-2 
+          </div>          <div className={`prose break-words prose-headings:mt-4 prose-headings:mb-2 
             ${theme === 'dark' 
               ? 'prose-invert prose-code:text-cyan-300 prose-a:text-blue-400 prose-strong:text-blue-300'
               : 'prose-code:text-cyan-700 prose-a:text-blue-600 prose-strong:text-blue-700'} 
             prose-sm prose-pre:p-0 prose-pre:bg-transparent prose-pre:m-0`}
           >
             {processMessageContent()}
-          </div>          {isAI && (
-            <div className="mt-3 flex items-center gap-2">              {/* Audio controls - separated into two distinct buttons */}
+          </div>{/* Deep Research mode reasoning section */}
+          {isAI && message.mode === 'deep-research' && (
+            <>
+              {message.reasoning ? (
+                <div className={`mt-3 mb-4 p-4 rounded-lg border ${
+                  theme === 'dark' 
+                    ? 'bg-purple-900/30 border-purple-700/40' 
+                    : 'bg-purple-50/90 border-purple-200'
+                }`}>
+                  <div className="flex items-center mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${
+                      theme === 'dark' ? 'text-purple-300' : 'text-purple-700'
+                    }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <h4 className={`ml-2 text-sm font-bold ${
+                      theme === 'dark' ? 'text-purple-300' : 'text-purple-700'
+                    }`}>
+                      Raisonnement
+                    </h4>
+                    {message.sources && message.sources.length > 0 && (
+                      <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${
+                        theme === 'dark' 
+                          ? 'bg-blue-800/40 text-blue-300 border border-blue-700/30'
+                          : 'bg-blue-100 text-blue-700 border border-blue-200'
+                      }`}>
+                        <span className="flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-4.5-8.5M3 15l4.5-4.5M3 15l4.5 4.5" />
+                          </svg>
+                          Sources: {message.sources.length}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                <div className={`text-sm prose ${
+                    theme === 'dark' 
+                    ? 'prose-invert prose-code:text-cyan-300 text-gray-300' 
+                    : 'prose-code:text-cyan-600 text-gray-700'
+                  }`}>
+                    {message.reasoningSources && message.reasoningSources.length > 0 && message.sources ? (
+                      <div className="reasoning-container">
+                        {renderReasoningWithSources(message.reasoning, message.reasoningSources, message.sources)}
+                      </div>
+                    ) : (
+                      <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>
+                        {message.reasoning}
+                      </ReactMarkdown>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className={`mt-3 mb-4 p-2 rounded-lg border ${
+                  theme === 'dark' 
+                    ? 'bg-amber-900/30 border-amber-700/40' 
+                    : 'bg-amber-50/90 border-amber-200'
+                }`}>
+                  <div className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${
+                      theme === 'dark' ? 'text-amber-300' : 'text-amber-700'
+                    }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <h4 className={`ml-2 text-xs ${
+                      theme === 'dark' ? 'text-amber-300' : 'text-amber-700'
+                    }`}>
+                      Raisonnement non disponible. Mode Deep Research activé mais pas de données d&apos;analyse.
+                    </h4>
+                  </div>
+                </div>
+              )}
+            </>
+          )}          {isAI && (
+            <div className="mt-3 flex items-center gap-2">
+              {/* Audio controls - separated into two distinct buttons */}
               <div className="relative flex items-center">
                 {/* Main audio button */}
                 <button 
@@ -1021,8 +1290,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                 isVisible={showRagSuggestions}
                 onSuggestionClick={onSuggestionClick}
                 theme={theme}
-                previousMessages={message.conversationContext}
-              />
+                previousMessages={message.conversationContext}              />
             </div>
           )}
         </div>

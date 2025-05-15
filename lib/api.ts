@@ -81,7 +81,7 @@ export function isModelFree(modelId: string) {
 }
 
 // API OpenRouter
-export async function callOpenRouterAPI(modelId: string, messages: Message[], stream = false, clientApiKey?: string) {
+export async function callOpenRouterAPI(modelId: string, messages: Message[], stream = false, clientApiKey?: string, modelOptions?: {maxTokens?: number}) {
   // Utiliser la clé API fournie par le client si elle existe, sinon utiliser celle des paramètres du serveur
   let OPENROUTER_API_KEY = '';
   
@@ -151,16 +151,29 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
         role: 'system',
         content: 'You are a helpful assistant.'
       });
-    }
-    
-    // Créer un payload simple et robuste
+    }    // Créer un payload simple et robuste
     const payload = {
       model: modelId,
       messages: cleanMessages,
       temperature: 0.7,
-      max_tokens: 800,
+      max_tokens: modelOptions?.maxTokens || 800, // Use model-specific max_tokens if available
       stream: stream
-    };      // Logging du payload pour le diagnostic (sans imprimer toute la conversation)
+    };
+    
+    // Specific handling for DeepSeek models to prevent truncation
+    if (modelId.includes('deepseek')) {
+      // Increase max_tokens for DeepSeek models which often truncate responses
+      payload.max_tokens = 1200;
+      
+      // Add special instruction for Deep Research mode to avoid lost content
+      if (cleanMessages.some(msg => 
+          msg.role === 'system' && 
+          msg.content.includes('Deep Research mode'))) {
+        payload.max_tokens = 1500; // Even higher for Deep Research mode
+      }
+    }
+    
+    // Logging du payload pour le diagnostic (sans imprimer toute la conversation)
     console.log('OpenRouter payload structure:', { 
       model: payload.model,
       messageCount: payload.messages.length,
@@ -391,7 +404,7 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
 }
 
 // API NotDiamond - Implémentation avec fallback vers OpenRouter
-export async function callNotDiamondAPI(modelId: string, messages: Message[], stream = false, clientApiKey?: string) {
+export async function callNotDiamondAPI(modelId: string, messages: Message[], stream = false, clientApiKey?: string, modelOptions?: {maxTokens?: number}) {
   // Utiliser la clé API fournie par le client si elle existe, sinon utiliser celle des paramètres du serveur
   let NOTDIAMOND_API_KEY = '';
   let OPENROUTER_API_KEY = '';
@@ -423,15 +436,14 @@ export async function callNotDiamondAPI(modelId: string, messages: Message[], st
   
   try {
     console.log('NOT Diamond API service is currently experiencing issues');
-    
-    // Si OpenRouter API key est disponible, tentative de fallback
+      // Si OpenRouter API key est disponible, tentative de fallback
     if (OPENROUTER_API_KEY && openrouterFallbackMapping[modelId]) {
       const fallbackModelId = openrouterFallbackMapping[modelId];
       console.log(`Falling back to OpenRouter with equivalent model: ${fallbackModelId}`);
       
       try {
         // Appel à OpenRouter avec le modèle équivalent
-        const openRouterResponse = await callOpenRouterAPI(fallbackModelId, messages, stream);
+        const openRouterResponse = await callOpenRouterAPI(fallbackModelId, messages, stream, OPENROUTER_API_KEY, modelOptions);
         console.log('Successfully used OpenRouter as fallback');
         
         // Ajouter une note dans la réponse pour informer l'utilisateur du fallback
@@ -554,14 +566,13 @@ export async function callAIModel(model: AIModel, messages: Message[], stream = 
   if (!model) {
     throw new Error('No model specified');
   }
-  
-  console.log(`Appel au modèle ${model.id} avec le provider ${model.provider}`);
+    console.log(`Appel au modèle ${model.id} avec le provider ${model.provider}`);
   if (apiKeys) {
     console.log(`Clés API fournies par le client: OpenRouter=${!!apiKeys.openrouter}, NotDiamond=${!!apiKeys.notdiamond}, SerpAPI=${!!apiKeys.serpapi}`);
   }
   
   if (model.provider === 'openrouter') {
-    return callOpenRouterAPI(model.id, messages, stream, apiKeys?.openrouter);
+    return callOpenRouterAPI(model.id, messages, stream, apiKeys?.openrouter, { maxTokens: model.maxTokens });
   } else if (model.provider === 'notdiamond') {
     return callNotDiamondAPI(model.id, messages, stream, apiKeys?.notdiamond);
   } else {

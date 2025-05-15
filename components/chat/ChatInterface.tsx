@@ -32,8 +32,9 @@ const ChatInterface: React.FC = () => {
   const [conversations, setConversations] = useState<ChatSession[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   
-  // État global pour le mode RAG
+  // État global pour les modes
   const [ragMode, setRagMode] = useState<boolean>(false);
+  const [deepResearchMode, setDeepResearchMode] = useState<boolean>(false);
   
   // États pour la barre latérale de code
   const [showCodeSidebar, setShowCodeSidebar] = useState(false);
@@ -427,8 +428,7 @@ const ChatInterface: React.FC = () => {
       if (data.autoActivatedRAG) {
         setRagMode(true);
       }
-      
-      // Créer le message de réponse
+        // Créer le message de réponse
       const assistantMessage: Message = {
         id: generateId(),
         role: 'assistant',
@@ -447,10 +447,23 @@ const ChatInterface: React.FC = () => {
           position: source.position
         })) : [],
         mode: responseMode, // Utiliser le mode réel de la réponse
-        autoActivatedRAG: data.autoActivatedRAG // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
-      };
+        autoActivatedRAG: data.autoActivatedRAG, // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
+        reasoning: data.reasoning, // Add reasoning for Deep Research mode
+        reasoningSources: data.reasoningSources // Add reasoning sources for Deep Research mode
+      };      // Log for debugging
+      if (responseMode === 'deep-research') {
+        console.log("Deep Research response received:", {
+          hasReasoning: !!data.reasoning,
+          reasoningLength: data.reasoning?.length || 0,
+          hasReasoningSources: !!data.reasoningSources,
+          reasoningSourcesCount: data.reasoningSources?.length || 0,
+          sourcesCount: data.sources?.length || 0
+        });
+      }
       
+      // Add the assistant message to the messages array (only once)
       setMessages(prev => [...prev, assistantMessage]);
+      
       // Gestion des suggestions RAG supprimée
     } catch (err) {
       // Utilisons une approche plus robuste pour détecter les annulations
@@ -793,7 +806,18 @@ const ChatInterface: React.FC = () => {
                           Mode RAG (recherche web)
                         </button>
                       </div>
-                      <span className="text-xs mt-2 opacity-75">Activer la recherche web pour des réponses enrichies avec des sources</span>
+                      <div className="flex items-center">
+                        <span>ou</span>
+                      </div>
+                      <button
+                        onClick={() => handleStartNewConversation('deep-research')}
+                        className={`rounded-md px-3 py-1.5 text-sm font-medium shadow-md transition-all hover:scale-105
+                        ${theme === 'dark' 
+                          ? 'bg-gradient-to-r from-purple-900/40 to-indigo-900/40 text-purple-300 border border-purple-800/40 hover:from-purple-900/60 hover:to-indigo-900/60' 
+                          : 'bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-700 border border-purple-200 hover:from-purple-200 hover:to-indigo-200'}`}>
+                        Mode Deep Research (raisonnement avancé)
+                      </button>
+                      <span className="text-xs mt-2 opacity-75">Activer le raisonnement étape par étape avec le modèle Deepseek</span>
                       
                       {/* Exemples de prompts pour démonstration client */}
                       <div className={`mt-8 w-full max-w-lg rounded-lg p-4 transition-all
@@ -976,7 +1000,9 @@ const ChatInterface: React.FC = () => {
                   loading={loading}
                   theme={theme}
                   ragMode={ragMode}
+                  deepResearchMode={deepResearchMode}
                   onRagModeChange={toggleRagMode}
+                  onDeepResearchModeChange={(enabled) => setDeepResearchMode(enabled)}
                   onFileUploadClick={() => setShowFileUploader(true)}
                   selectedFile={selectedFile}
                   onCancelFileUpload={() => setSelectedFile(null)}
@@ -1040,6 +1066,7 @@ const ChatInterface: React.FC = () => {
                 currentModel={modelId} 
                 onModelChange={handleModelChange}
                 theme={theme} 
+                deepResearchMode={deepResearchMode}
               />
             </div>
           </div>

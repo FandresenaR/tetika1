@@ -140,3 +140,28 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 200, 255, 0.5);
 }
+
+/* Deep Research Mode Styling */
+.reasoning-with-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reasoning-with-sources > *:first-child {
+  margin-top: 0;
+}
+
+.reasoning-with-sources > *:last-child {
+  margin-bottom: 0;
+}
+
+.reasoning-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.reasoning-content {
+  width: 100%;
+}

@@ -8,6 +8,7 @@ interface ModelSelectorProps {
   currentModel?: string;
   onModelChange?: (model: string) => void;
   theme?: 'dark' | 'light';
+  deepResearchMode?: boolean; // Ajout du prop pour le mode Deep Research
 }
 
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
@@ -16,6 +17,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   currentModel,
   onModelChange,
   theme = 'dark',
+  deepResearchMode = false,
 }) => {
   // État pour stocker la catégorie sélectionnée pour le filtre
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -42,6 +44,24 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   // Fonction pour filtrer les modèles selon les critères actuels
   const getFilteredModels = () => {
     let filtered = allModels;
+    
+    // Si en mode Deep Research, ne montrer que les modèles Deepseek
+    if (deepResearchMode) {
+      filtered = filtered.filter(model => 
+        model.id.includes('deepseek/') || model.name.toLowerCase().includes('deepseek')
+      );
+      
+      // Si aucun modèle n'est sélectionné ou si le modèle sélectionné n'est pas un Deepseek,
+      // sélectionner automatiquement Deepseek R1 Distill Llama 70B
+      if (!effectiveSelectedModelId || 
+          !filtered.some(model => model.id === effectiveSelectedModelId)) {
+        setTimeout(() => {
+          handleModelSelection("deepseek/deepseek-r1-distill-llama-70b:free");
+        }, 0);
+      }
+      
+      return filtered;
+    }
     
     // Filtre par terme de recherche
     if (searchTerm.trim()) {

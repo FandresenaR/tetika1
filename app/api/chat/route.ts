@@ -3,6 +3,7 @@ import { Message, ChatMode } from '@/types';
 import { callAIModel } from '@/lib/api';
 import { enhanceWithRAG } from '@/lib/rag-helper';
 import { extractMistralResponse, extractFromTruncatedResponse } from '@/lib/llm-utils';
+import { parseDeepResearchResponse } from '@/lib/deep-research-parser';
 
 interface Source {
   title: string;
@@ -93,7 +94,52 @@ export async function POST(request: NextRequest) {
     let autoActivatedRAG = false; // Indique si le RAG a été activé automatiquement
     
     // Create a new array for messages that we'll send to the AI
-    let messagesForAI = [...processedMessages];
+    let messagesForAI = [...processedMessages];    // Add reasoning instructions if using Deep Research mode
+    let reasoning = '';
+    if (mode === 'deep-research') {
+      // Force the model to use Deepseek R1 Distill Llama 70B which is available on OpenRouter for Deep Research mode
+      model.id = "deepseek/deepseek-r1-distill-llama-70b:free";
+      model.name = "DeepSeek R1 Distill Llama 70B";
+      model.provider = "openrouter";
+      
+      // Deep Research mode should always use RAG for up-to-date information
+      if (supportsRAG) {
+        // Set RAG mode for Deep Research to ensure the most accurate information
+        currentMode = 'rag';
+        console.log("Deep Research mode automatically activating RAG for up-to-date information");
+        autoActivatedRAG = true;
+      }      // Add system message for the reasoning steps display with very clear formatting instructions
+      messagesForAI.unshift({
+        id: generateId(),
+        role: 'system',
+        content: `You are in Deep Research mode with access to internet search results. For every response, you must strictly follow this format:
+
+REASONING:
+[Detailed step-by-step analysis showing how you arrive at your answer. Think through the problem carefully, considering different angles and evidence. If you don't have up-to-date information on a topic, clearly state this in your reasoning.
+
+When using information from search results, always cite your sources using the format [1], [2], etc. that corresponds to the search result number. EVERY factual claim from a search result must include a citation in this format. Use at least 3-4 different sources when possible to provide comprehensive coverage.
+
+Cite sources immediately after the fact or statement they support, not at the end of paragraphs. For example: "According to recent data [1], global temperatures have risen by 1.1°C since pre-industrial times. This has led to more extreme weather events [2]."]
+
+CONCLUSION:
+[Provide a concise, direct answer that addresses the user's question clearly. Be honest about the limitations of your knowledge when necessary.]
+
+IMPORTANT: 
+- Always use exactly these headings (REASONING: and CONCLUSION:) with a line break after each heading
+- The REASONING section must always come before the CONCLUSION section
+- Keep your total response under 700 tokens to avoid truncation
+- ALWAYS use numbered citations [1], [2], etc. for facts from search results
+- If you don't have sufficient information, say so explicitly rather than making up an answer`,
+        timestamp: Date.now(),
+        mode: 'deep-research' as ChatMode
+      });
+      
+      // Adjust max tokens to prevent truncation with DeepSeek models
+      if (model.provider === 'openrouter') {
+        // Increase token limit for OpenRouter to prevent truncation
+        model.maxTokens = 1000;
+      }
+    }
     
     // Vérifier si le dernier message utilisateur pourrait nécessiter une recherche en ligne
     // seulement si le modèle supporte le RAG et que le RAG n'est pas déjà activé
@@ -166,8 +212,7 @@ Si tu as les informations nécessaires, ignore cette instruction et réponds nor
     // Si le mode RAG est activé (manuellement ou automatiquement), enrichir avec des recherches web
     if (currentMode === 'rag') {
       // Get the last user message
-      const lastUserMessage = messages.findLast((msg: Message) => msg.role === 'user');
-        if (lastUserMessage) {
+      const lastUserMessage = messages.findLast((msg: Message) => msg.role === 'user');      if (lastUserMessage) {
         // Utiliser la clé SerpAPI fournie par le client si disponible, sinon utiliser celle du serveur
         let serpApiKey = '';
         
@@ -181,45 +226,60 @@ Si tu as les informations nécessaires, ignore cette instruction et réponds nor
         
         if (!serpApiKey) {
           console.error('Aucune clé SerpAPI configurée');
-          return NextResponse.json({ error: 'SerpAPI key is not configured' }, { status: 500 });
+          return NextResponse.json({ 
+            error: 'SerpAPI key is not configured. Please add a valid SerpAPI key in settings.' 
+          }, { status: 400 });
         }
         
         // Use our new enhanceWithRAG utility
-        const ragResults = await enhanceWithRAG(lastUserMessage.content, serpApiKey);
-        
-        if (ragResults.error) {
-          console.warn(`RAG enhancement warning: ${ragResults.error}`);
-        }
-        
-        ragContext = ragResults.context;
-        sources = ragResults.sources;
-        
-        // Create a copy of the messages array for RAG mode
-        const messagesWithRAG = [...messagesForAI];
-        
-        // Find the index of the last user message
-        const lastUserMessageIndex = messagesWithRAG.findLastIndex((msg: Message) => msg.role === 'user');
-        
-        if (lastUserMessageIndex !== -1) {
-          // Create a system message with the search results to insert before the last user message
-          const systemMessage: Message & { content: string | ContentPart[] } = {
-            id: generateId(),
-            role: 'system',
-            content: `I'm providing you with recent web search results related to the user's query. 
+        try {
+          const ragResults = await enhanceWithRAG(lastUserMessage.content, serpApiKey);
+          
+          if (ragResults.error) {
+            console.warn(`RAG enhancement warning: ${ragResults.error}`);
+            
+            // Handle auth errors specifically
+            if (ragResults.error.includes('401') || ragResults.error.includes('403')) {
+              return NextResponse.json({ 
+                error: 'Your SerpAPI key is invalid or expired. Please update your SerpAPI key in settings.' 
+              }, { status: 401 });
+            }
+          }
+          
+          ragContext = ragResults.context;
+          sources = ragResults.sources;
+          
+          // Create a copy of the messages array for RAG mode
+          const messagesWithRAG = [...messagesForAI];
+          
+          // Find the index of the last user message
+          const lastUserMessageIndex = messagesWithRAG.findLastIndex((msg: Message) => msg.role === 'user');
+          
+          if (lastUserMessageIndex !== -1) {
+            // Create a system message with the search results to insert before the last user message
+            const systemMessage: Message & { content: string | ContentPart[] } = {
+              id: generateId(),
+              role: 'system',
+              content: `I'm providing you with recent web search results related to the user's query. 
 Please incorporate this information in your response and cite sources when appropriate using [1], [2], etc.
 ${autoActivatedRAG ? "\nImportant: J'ai automatiquement activé la recherche web car il semblait que tu pourrais ne pas avoir les informations les plus à jour sur ce sujet. Mentionne cela brièvement au début de ta réponse." : ""}
 
 Web search results:
 ${ragContext}`,
-            timestamp: Date.now(),
-            mode: 'rag' as ChatMode
-          };
-          
-          // Insert the system message before the last user message
-          messagesWithRAG.splice(lastUserMessageIndex, 0, systemMessage);
-          
-          // Use the enhanced messages array instead of trying to reassign messages
-          messagesForAI = messagesWithRAG;
+              timestamp: Date.now(),
+              mode: 'rag' as ChatMode
+            };
+            
+            // Insert the system message before the last user message
+            messagesWithRAG.splice(lastUserMessageIndex, 0, systemMessage);
+            
+            // Use the enhanced messages array instead of trying to reassign messages
+            messagesForAI = messagesWithRAG;
+          }
+        } catch (error) {
+          console.error('Erreur lors de l\'utilisation du mode RAG:', error);
+          // Continue with standard mode if RAG fails
+          console.log('Continuing with standard mode due to RAG error');
         }
       }
     }
@@ -263,7 +323,8 @@ ${ragContext}`,
         aiResponse = apiResponse.choices[0].delta.content;
       } else if (apiResponse?.choices?.[0]?.text) {
         // Some APIs might use 'text' instead of 'message.content'
-        aiResponse = apiResponse.choices[0].text;      } else if (apiResponse?.message?.content) {
+        aiResponse = apiResponse.choices[0].text;
+      } else if (apiResponse?.message?.content) {
         // Alternative format some providers might use
         aiResponse = apiResponse.message.content;
       } else if (apiResponse?.content) {
@@ -271,7 +332,8 @@ ${ragContext}`,
         aiResponse = apiResponse.content;
       } else if (typeof apiResponse === 'string') {
         // For providers that might just return a string
-        aiResponse = apiResponse;} else {
+        aiResponse = apiResponse;
+      } else {
         // Try to extract any text we can find in the response
         let responseStr = '';
         try {
@@ -352,12 +414,44 @@ ${ragContext}`,
     } catch (extractError) {
       console.error("Error extracting AI response:", extractError);
       aiResponse = "Une erreur s'est produite lors du traitement de la réponse. Veuillez réessayer.";
+    }    // Process the response for Deep Research mode to separate reasoning from conclusion
+    if (mode === 'deep-research' && aiResponse) {
+      console.log("Processing Deep Research response, length:", aiResponse.length);
+      // For debug purposes, log a snippet of the response
+      console.log("Response snippet:", aiResponse.substring(0, 100).replace(/\n/g, "\\n") + "...");
+      
+      // Use our helper function to parse the deep research response
+      // Pass RAG sources to the parser for Deep Research mode to extract citations
+      const { reasoning: parsedReasoning, conclusion, reasoningSources } = parseDeepResearchResponse(
+        aiResponse, 
+        currentMode === 'rag' ? sources : undefined
+      );
+      
+      // Log the results of the parsing
+      console.log("Parsed reasoning length:", parsedReasoning?.length || 0);
+      console.log("Parsed conclusion length:", conclusion?.length || 0);
+      console.log("Reasoning sources:", reasoningSources?.length || 0);
+      
+      // Set the reasoning and update the aiResponse to just the conclusion part
+      reasoning = parsedReasoning;
+      aiResponse = conclusion;
+      
+      // Return the AI response with sources and reasoning
+      return NextResponse.json({
+        message: aiResponse,
+        sources: currentMode === 'rag' ? sources : [],
+        autoActivatedRAG: autoActivatedRAG,
+        reasoning: reasoning,
+        reasoningSources: reasoningSources
+      });
     }
-      // Return the AI response with sources if in RAG mode
+      
+    // Return the AI response with sources if in RAG mode (standard case)
     return NextResponse.json({
       message: aiResponse,
       sources: currentMode === 'rag' ? sources : [],
-      autoActivatedRAG: autoActivatedRAG // Indiquer si le RAG a été activé automatiquement
+      autoActivatedRAG: autoActivatedRAG,
+      reasoning: reasoning || undefined
     });
   } catch (error) {
     console.error('Erreur lors du traitement de la requête chat:', error);

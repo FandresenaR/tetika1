@@ -36,13 +36,41 @@ export function extractFromTruncatedResponse(responseStr: string): string | null
   const patterns = [
     /"content"\s*:\s*"([^"]+)"/,
     /"text"\s*:\s*"([^"]+)"/,
-    /"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/
+    /"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/,
+    /"message"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/
   ];
   
   for (const pattern of patterns) {
     const match = responseStr.match(pattern);
     if (match && match[1]) {
       return match[1];
+    }
+  }
+  
+  // Special handling for DeepSeek models
+  if (responseStr.includes('deepseek')) {
+    // First try to match delta content patterns specific to DeepSeek
+    const deepseekPatterns = [
+      /"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/,
+      /"content"\s*:\s*"([^"]*)"/
+    ];
+    
+    for (const pattern of deepseekPatterns) {
+      const match = responseStr.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    // If still nothing, try more aggressive extraction for DeepSeek
+    // Look for content after the last occurrence of "delta"
+    const deltaIndex = responseStr.lastIndexOf('"delta"');
+    if (deltaIndex > 0) {
+      const contentAfterDelta = responseStr.substring(deltaIndex);
+      const contentMatch = contentAfterDelta.match(/"content"\s*:\s*"([^"]*)"/);
+      if (contentMatch && contentMatch[1]) {
+        return contentMatch[1];
+      }
     }
   }
   
