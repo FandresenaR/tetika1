@@ -3,8 +3,6 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import { Message as MessageType } from '@/types';
 import { speakText, stopSpeech, detectLanguage } from '@/lib/speech-utils';
 import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { atomDark, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Define the code sidebar context type
 interface CodeSidebarContextType {
