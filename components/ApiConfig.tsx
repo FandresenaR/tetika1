@@ -48,11 +48,18 @@ export const ApiConfig: React.FC<ApiConfigProps> = ({ onConfigSaved }) => {
       localStorage.setItem('tetika-skip-config', 'true');
       onConfigSaved();
       return;
-    }
-    
-    // Validation de base
+    }      // Validation de base
     if (!openRouterKey.trim() && !skipConfig) {
       setError('La clé OpenRouter est requise pour utiliser les modèles payants.');
+      return;
+    }    
+    
+    // Log pour le debugging
+    console.log('Clé OpenRouter (premiers caractères):', openRouterKey.trim().substring(0, 10) + '...');
+    
+    // Validation du format de la clé OpenRouter (doit commencer par sk-or-, sk-or-v1- ou sk-o1)
+    if (openRouterKey.trim() && !openRouterKey.trim().startsWith('sk-or-') && !openRouterKey.trim().startsWith('sk-o1') && !openRouterKey.trim().startsWith('sk-or-v1-')) {
+      setError('Le format de la clé API OpenRouter est invalide. Les clés doivent commencer par "sk-or-", "sk-or-v1-" ou "sk-o1"');
       return;
     }
     
@@ -119,17 +126,15 @@ export const ApiConfig: React.FC<ApiConfigProps> = ({ onConfigSaved }) => {
         <div>
           <label htmlFor="openrouter-key" className="block text-sm font-medium text-cyan-300 mb-1">
             Clé API OpenRouter
-          </label>
-          <input
+          </label>          <input
             id="openrouter-key"
             type="password"
             className="futuristic-input w-full"
             value={openRouterKey}
             onChange={(e) => setOpenRouterKey(e.target.value)}
-            placeholder="Entrez votre clé API OpenRouter (pour modèles payants)"
-          />
-          <p className="text-xs text-gray-400 mt-1">
-            Requis pour accéder aux modèles payants. Obtenez une clé sur <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">openrouter.ai</a>
+            placeholder="Entrez votre clé API OpenRouter (commence par sk-or-, sk-or-v1- ou sk-o1)"
+          />          <p className="text-xs text-gray-400 mt-1">
+            Requis pour accéder aux modèles payants. La clé doit commencer par &quot;sk-or-&quot;, &quot;sk-or-v1-&quot; ou &quot;sk-o1&quot;. Obtenez une clé sur <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">openrouter.ai</a>
           </p>
         </div>
         

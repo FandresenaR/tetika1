@@ -249,8 +249,17 @@ ${ragContext}`,
           timestamp: Date.now(),
           mode: mode as ChatMode
         });
-      }
-    }    // Appeler le modèle d'IA avec le message enrichi et les clés API fournies par le client
+      }    }    
+    
+    // Debug log pour les clés API
+    console.log('API keys provided to callAIModel:', {
+      hasOpenRouter: !!apiKeys?.openrouter,
+      hasNotDiamond: !!apiKeys?.notdiamond,
+      hasSerpApi: !!apiKeys?.serpapi,
+      openrouterKeyPrefix: apiKeys?.openrouter ? apiKeys.openrouter.substring(0, 10) + '...' : 'none'
+    });
+    
+    // Appeler le modèle d'IA avec le message enrichi et les clés API fournies par le client
     const apiResponse = await callAIModel(model, messagesForAI, false, apiKeys);
       // Extract the AI response content more safely
     let aiResponse = "";
@@ -271,7 +280,7 @@ ${ragContext}`,
         aiResponse = apiResponse.content;
       } else if (typeof apiResponse === 'string') {
         // For providers that might just return a string
-        aiResponse = apiResponse;} else {
+        aiResponse = apiResponse;      } else {
         // Try to extract any text we can find in the response
         let responseStr = '';
         try {
@@ -280,7 +289,15 @@ ${ragContext}`,
           console.error("Failed to stringify API response:", jsonError);
           responseStr = String(apiResponse);
         }
-          console.error("Unexpected API response format:", responseStr.substring(0, 200));
+        
+        // Only log as warning - not an error since our handling can recover
+        if (process.env.NODE_ENV === 'development') {
+          // In development, show detailed info
+          console.log("Response format different than expected:", responseStr.substring(0, 200));
+        } else {
+          // In production, just note it happened without showing details
+          console.log("Alternative response format detected, attempting to extract content");
+        }
         
         // Special handling for Mistral models which often have truncated responses
         if (model.id.includes('mistral')) {
