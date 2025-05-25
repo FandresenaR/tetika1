@@ -1,6 +1,6 @@
 // Simple script to check for syntax errors in the specified file
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 // Get the file path from command line arguments
 const filePath = process.argv[2];
