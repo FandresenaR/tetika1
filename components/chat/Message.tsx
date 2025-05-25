@@ -42,6 +42,7 @@ interface MessageProps {
   onSuggestionClick?: (suggestion: string) => void; // Pour gérer les clics sur les suggestions RAG
   showBottomSuggestions?: boolean; // Pour contrôler l'affichage des suggestions en bas
   onDataAccess?: (messageId: string) => void; // Added for data access functionality
+  onModify?: (messageId: string, currentContent: string) => void; // Added for modify functionality
 }
 
 interface CodeBlockProps {
@@ -283,7 +284,7 @@ const getSourceUrl = (source: SourceType): string => {
   return source?.url || source?.link || '#';
 };
 
-export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onRegenerate, onRegenerateResponse, onSuggestionClick, onDataAccess }) => {  
+export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onRegenerate, onRegenerateResponse, onSuggestionClick, onDataAccess, onModify }) => {  
   const [showSources, setShowSources] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);  
   const [isCopiedMessage, setIsCopiedMessage] = useState(false);
@@ -293,6 +294,9 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
   const [speechLanguage, setSpeechLanguage] = useState<'fr-FR' | 'en-US' | null>(null);
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [forcedLanguage, setForcedLanguage] = useState<'fr-FR' | 'en-US' | null>(null);
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content || '');
   const isAI = message.role === 'assistant';
   const hasSources = message.sources && message.sources.length > 0;
   const isRagMode = message.mode === 'rag';
@@ -372,8 +376,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
     ];
     
     return scrapingKeywords.some(keyword => content.includes(keyword));
-  };
-  // Function to handle data access button click
+  };  // Function to handle data access button click
   const handleDataAccess = () => {
     try {
       if (onDataAccess) {
@@ -386,6 +389,26 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       console.error('Erreur lors de l\'accès aux données:', error);
       alert('Erreur lors de l\'accès aux données scrapées');
     }
+  };
+
+  // Handle modify button click
+  const handleModifyClick = () => {
+    setIsEditing(true);
+    setEditContent(message.content || '');
+  };
+
+  // Handle save edit
+  const handleSaveEdit = () => {
+    if (onModify && editContent.trim()) {
+      onModify(message.id, editContent.trim());
+      setIsEditing(false);
+    }
+  };
+
+  // Handle cancel edit
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditContent(message.content || '');
   };
 
   // Update the speaking state if speech ends
@@ -856,31 +879,89 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
               )}
               {formattedDate}
             </span>
-          </div>          <div className={`prose break-words prose-headings:mt-4 prose-headings:mb-2 
-            ${theme === 'dark' 
-              ? 'prose-invert prose-code:text-cyan-300 prose-a:text-blue-400 prose-strong:text-blue-300'
-              : 'prose-code:text-cyan-700 prose-a:text-blue-600 prose-strong:text-blue-700'} 
-            prose-sm prose-pre:p-0 prose-pre:bg-transparent prose-pre:m-0`}
-          >
-            {processMessageContent()}
-          </div>
-
-          {/* Data Access Button for User Scraping Messages */}
-          {!isAI && isScrapingMessage() && (
+          </div>          {isEditing ? (
+            // Edit mode - show textarea and save/cancel buttons
+            <div className="space-y-3">
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className={`w-full p-3 rounded-lg border resize-none min-h-[100px] ${
+                  theme === 'dark'
+                    ? 'bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-500'
+                    : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                } focus:outline-none focus:ring-2 focus:ring-blue-500/20`}
+                placeholder="Modifiez votre message..."
+                autoFocus
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSaveEdit}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    theme === 'dark'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  Envoyer
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    theme === 'dark'
+                      ? 'bg-gray-600 hover:bg-gray-700 text-white'
+                      : 'bg-gray-400 hover:bg-gray-500 text-white'
+                  }`}
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+            // Normal mode - show message content
+            <div className={`prose break-words prose-headings:mt-4 prose-headings:mb-2 
+              ${theme === 'dark' 
+                ? 'prose-invert prose-code:text-cyan-300 prose-a:text-blue-400 prose-strong:text-blue-300'
+                : 'prose-code:text-cyan-700 prose-a:text-blue-600 prose-strong:text-blue-700'} 
+              prose-sm prose-pre:p-0 prose-pre:bg-transparent prose-pre:m-0`}
+            >
+              {processMessageContent()}
+            </div>
+          )}          {/* User message buttons */}
+          {!isAI && !isEditing && (
             <div className="mt-3 flex items-center gap-2">
-              <button 
-                onClick={handleDataAccess}
-                className={`text-xs ${theme === 'dark' 
-                  ? 'bg-blue-800/40 hover:bg-blue-700/40 text-blue-300 border border-blue-700/40' 
-                  : 'bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-200'} 
-                  px-2 py-1 rounded flex items-center gap-1 transition-colors`}
-                title="Accéder aux données scrapées"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Accéder aux données
-              </button>
+              {/* Data Access Button for User Scraping Messages */}
+              {isScrapingMessage() && (
+                <button 
+                  onClick={handleDataAccess}
+                  className={`text-xs ${theme === 'dark' 
+                    ? 'bg-blue-800/40 hover:bg-blue-700/40 text-blue-300 border border-blue-700/40' 
+                    : 'bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-200'} 
+                    px-2 py-1 rounded flex items-center gap-1 transition-colors`}
+                  title="Accéder aux données scrapées"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Accéder aux données
+                </button>
+              )}
+              
+              {/* Modify Button for User Messages */}
+              {onModify && (
+                <button 
+                  onClick={handleModifyClick}
+                  className={`text-xs ${theme === 'dark' 
+                    ? 'bg-gray-700/50 hover:bg-gray-600/50 text-gray-300 border border-gray-600/40' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'} 
+                    px-2 py-1 rounded flex items-center gap-1 transition-colors`}
+                  title="Modifier le message"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Modifier
+                </button>
+              )}
             </div>
           )}
 

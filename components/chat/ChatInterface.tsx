@@ -703,6 +703,32 @@ const ChatInterface: React.FC = () => {
     }
   };
 
+  // Function to handle message modification
+  const handleModifyMessage = async (messageId: string, newContent: string) => {
+    // Find the message to modify
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    if (messageIndex === -1) return;
+    
+    const messageToModify = messages[messageIndex];
+    if (messageToModify.role !== 'user') return; // Only allow modifying user messages
+    
+    // Update the message content
+    const updatedMessages = [...messages];
+    updatedMessages[messageIndex] = {
+      ...messageToModify,
+      content: newContent.trim(),
+      timestamp: Date.now()
+    };
+    
+    // Remove all messages after the modified message (including AI responses)
+    const messagesUpToModified = updatedMessages.slice(0, messageIndex + 1);
+    setMessages(messagesUpToModified);
+    
+    // Regenerate AI response with the modified message
+    const mode = messageToModify.mode || 'standard';
+    await handleSendMessage(newContent.trim(), mode);
+  };
+
   // Function to handle web scraping
   const handleScrapWebsite = async (url: string, prompt: string, mode?: 'content' | 'links' | 'images' | 'all', messageId?: string) => {
     try {
@@ -1214,6 +1240,7 @@ Vous pouvez consulter les données détaillées dans le tableau qui s'est ouvert
                             handleSendMessage(suggestion, 'rag');
                           }}
                           onDataAccess={handleDataAccess}
+                          onModify={handleModifyMessage}
                         />
                       );
                     })}                    {loading && (
@@ -1449,7 +1476,7 @@ const Footer: React.FC<{ theme: 'dark' | 'light' }> = ({ theme }) => {
         >
           <span className="flex items-center gap-1">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+              <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5  19h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
             </svg>
             LinkedIn
           </span>
