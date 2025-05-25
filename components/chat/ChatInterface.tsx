@@ -78,9 +78,13 @@ const ChatInterface: React.FC = () => {
     };
     scrapedAt?: string;
   }
-  
-  const [scrapedData, setScrapedData] = useState<ScrapedDataItem | null>(null);
+    const [scrapedData, setScrapedData] = useState<ScrapedDataItem | null>(null);
   const [showScrapedDataTable, setShowScrapedDataTable] = useState(false);
+    // Storage for associating scraped data with specific messages
+  const [messageScrapedData, setMessageScrapedData] = useState<Map<string, ScrapedDataItem>>(new Map());
+  
+  // State to track the current user message ID for scraping purposes
+  const [currentUserMessageId, setCurrentUserMessageId] = useState<string | null>(null);
   // Anciennement pour les suggestions RAG - supprimé
     // Fonction pour détecter si on est sur mobile
   useEffect(() => {
@@ -284,17 +288,20 @@ const ChatInterface: React.FC = () => {
       return () => clearTimeout(timeoutId);
     }
   }, [messages, modelId, activeConversationId, conversations, defaultModelId]);
-  
-  const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null) => {
+    const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null) => {
     if (!content.trim() && !file) return;
     
     // Reset le fichier sélectionné après utilisation
     const currentFile = file || selectedFile;
     setSelectedFile(null);
     
+    // Generate message ID and set it for scraping purposes
+    const messageId = generateId();
+    setCurrentUserMessageId(messageId);
+    
     // Création du message utilisateur avec le fichier joint si présent
     const userMessage: Message = {
-      id: generateId(),
+      id: messageId,
       role: 'user',
       content,
       timestamp: Date.now(),
@@ -683,8 +690,21 @@ const ChatInterface: React.FC = () => {
     // La chaîne vide comme premier message ne sera pas affichée à l'utilisateur
     // mais permettra d'initialiser le mode
     setRagMode(mode === 'rag');
-    handleSendMessage("Bonjour TETIKA, peux-tu m&apos;aider ?", mode);  };  // Function to handle web scraping
-  const handleScrapWebsite = async (url: string, prompt: string, mode?: 'content' | 'links' | 'images' | 'all') => {
+    handleSendMessage("Bonjour TETIKA, peux-tu m&apos;aider ?", mode);  };  // Function to handle data access for previously scraped data
+  const handleDataAccess = (messageId: string) => {
+    const storedData = messageScrapedData.get(messageId);
+    if (storedData) {
+      setScrapedData(storedData);
+      setShowScrapedDataTable(true);
+    } else {
+      // No scraped data found for this message
+      console.warn(`No scraped data found for message ID: ${messageId}`);
+      // Could show a toast or alert here if needed
+    }
+  };
+
+  // Function to handle web scraping
+  const handleScrapWebsite = async (url: string, prompt: string, mode?: 'content' | 'links' | 'images' | 'all', messageId?: string) => {
     try {
       setLoading(true);
       
@@ -705,14 +725,17 @@ const ChatInterface: React.FC = () => {
       
       if (response_data.error) {
         throw new Error(response_data.message || 'Erreur de scraping');
-      }
-
-      // Extract the actual scraped data from the API response
+      }      // Extract the actual scraped data from the API response
       const scrapedInfo = response_data.data || response_data;
       
       // Set the scraped data and show the modal
       setScrapedData(scrapedInfo);
-      setShowScrapedDataTable(true);      // Add a success message to the chat
+      setShowScrapedDataTable(true);
+      
+      // Store the scraped data associated with the message ID if provided
+      if (messageId) {
+        setMessageScrapedData(prev => new Map(prev).set(messageId, scrapedInfo));
+      }// Add a success message to the chat
       const successMessage: Message = {
         id: generateId(),
         role: 'system',
@@ -1181,8 +1204,7 @@ Vous pouvez consulter les données détaillées dans le tableau qui s'est ouvert
                           snippet: source.snippet,
                           position: source.position
                         }))
-                      };
-                        return (                        <MessageComponent 
+                      };                        return (                        <MessageComponent 
                           key={message.id} 
                           message={transformedMessage} 
                           theme={theme} 
@@ -1191,6 +1213,7 @@ Vous pouvez consulter les données détaillées dans le tableau qui s'est ouvert
                             setRagMode(true);
                             handleSendMessage(suggestion, 'rag');
                           }}
+                          onDataAccess={handleDataAccess}
                         />
                       );
                     })}                    {loading && (
@@ -1228,10 +1251,10 @@ Vous pouvez consulter les données détaillées dans le tableau qui s'est ouvert
                   _previousMessages={messages.map(m => ({ 
                     role: m.role, 
                     content: m.content 
-                  }))}
-                  onInputFocus={() => {}}
+                  }))}                  onInputFocus={() => {}}
                   onStopGeneration={handleStopGeneration}
                   onScrapWebsite={handleScrapWebsite}
+                  currentUserMessageId={currentUserMessageId || undefined}
                 />
               </div>
             </div>

@@ -11,14 +11,13 @@ interface ChatInputProps {
   onFileUploadClick: () => void;
   selectedFile: File | null;
   onCancelFileUpload: () => void;
-  _previousMessages?: { role: string; content: string }[];
-  onInputFocus?: () => void;
+  _previousMessages?: { role: string; content: string }[];  onInputFocus?: () => void;
   onStopGeneration?: () => void;
-  onScrapWebsite?: (url: string, prompt: string, mode?: 'content' | 'links' | 'images' | 'all') => void;
+  onScrapWebsite?: (url: string, prompt: string, mode?: 'content' | 'links' | 'images' | 'all', messageId?: string) => void;
+  currentUserMessageId?: string; // For passing the current user message ID when scraping
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({
-  onSendMessage,
+const ChatInput: React.FC<ChatInputProps> = ({  onSendMessage,
   loading,
   theme,
   ragMode,
@@ -28,18 +27,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // Removed unused previousMessages parameter by prefixing with underscore
   onInputFocus,
   onStopGeneration,
-  onScrapWebsite
+  onScrapWebsite,
+  currentUserMessageId
 }) => {
   const [message, setMessage] = useState('');  const textareaRef = useRef<HTMLTextAreaElement>(null);  const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [cursorPosition, setCursorPosition] = useState(0);  const [scrapingUrl, setScrapingUrl] = useState<string | null>(null);
   const [previousRagMode, setPreviousRagMode] = useState<boolean>(false);
   const [showRagNotification, setShowRagNotification] = useState<boolean>(false);const handleSendMessage = useCallback(() => {
-    if (message.trim()) {
-      // If we have a scraping URL waiting, execute scraping with the message as prompt
+    if (message.trim()) {      // If we have a scraping URL waiting, execute scraping with the message as prompt
       if (scrapingUrl) {
         if (onScrapWebsite) {
-          onScrapWebsite(scrapingUrl, message.trim());
+          onScrapWebsite(scrapingUrl, message.trim(), 'all', currentUserMessageId);
         }
         setScrapingUrl(null);
       } else {
@@ -48,7 +47,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       }
       setMessage('');
     }
-  }, [message, ragMode, selectedFile, onSendMessage, scrapingUrl, onScrapWebsite]);
+  }, [message, ragMode, selectedFile, onSendMessage, scrapingUrl, onScrapWebsite, currentUserMessageId]);
 
   // Handle text input changes and detect "@" symbol
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -98,13 +97,24 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const handleContextMenuClose = useCallback(() => {
     setContextMenuVisible(false);
   }, []);
-
   // Handle canceling scraping mode
   const handleCancelScraping = useCallback(() => {
     setScrapingUrl(null);
     // Restore previous RAG mode state when canceling scraping
     onRagModeChange(previousRagMode);
   }, [previousRagMode, onRagModeChange]);
+
+  // Handle reopening scraping popup to modify URL or access scraped data
+  const handleReopenScrapingPopup = useCallback(() => {
+    if (textareaRef.current) {
+      const rect = textareaRef.current.getBoundingClientRect();
+      setContextMenuPosition({
+        x: rect.left + 20,
+        y: rect.top - 150
+      });
+      setContextMenuVisible(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -215,16 +225,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
             </p>
           </div>
         </div>
-      )}
-
-      {/* Scraping mode indicator */}
+      )}      {/* Scraping mode indicator */}
       {scrapingUrl && (
-        <div className={`flex items-center gap-2 p-2 mb-2 rounded-lg backdrop-blur-sm border-l-4
+        <div className={`flex items-center gap-2 p-3 mb-2 rounded-lg backdrop-blur-sm border-l-4 relative
           ${theme === 'dark'
-            ? 'bg-orange-900/20 border-orange-500 text-orange-300'
-            : 'bg-orange-50/90 border-orange-400 text-orange-700'}`}
+            ? 'bg-orange-900/20 border-orange-500 text-orange-300 shadow-lg shadow-orange-500/10'
+            : 'bg-orange-50/90 border-orange-400 text-orange-700 shadow-lg shadow-orange-300/10'}`}
         >
-          <div className={`p-1 rounded ${
+          <div className={`p-1.5 rounded-full ${
             theme === 'dark' ? 'bg-orange-800/40' : 'bg-orange-100'
           }`}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -232,31 +240,47 @@ const ChatInput: React.FC<ChatInputProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9l7 7" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9l-7 7" />
             </svg>
-          </div>          <div className="flex-1 min-w-0">
+          </div>
+          <div className="flex-1 min-w-0">
             <p className={`text-sm font-medium ${theme === 'dark' ? 'text-orange-300' : 'text-orange-700'}`}>
-              Scraping Mode Active 
-              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+              🕷️ Scraping Mode Active 
+              <span className={`ml-2 text-xs px-2 py-1 rounded-full ${
                 theme === 'dark' ? 'bg-blue-700/40 text-blue-300' : 'bg-blue-100 text-blue-700'
               }`}>
                 RAG AUTO-ON
               </span>
             </p>
             <p className={`text-xs truncate ${theme === 'dark' ? 'text-orange-400' : 'text-orange-600'}`}>
-              URL: {scrapingUrl}
+              🌐 URL: {scrapingUrl}
             </p>
-          </div>          <button
-            type="button"
-            onClick={handleCancelScraping}
-            className={`p-1 rounded-full transition-all
-              ${theme === 'dark'
-                ? 'text-orange-400 hover:text-orange-200 hover:bg-orange-800/70'
-                : 'text-orange-600 hover:text-orange-800 hover:bg-orange-200/70'}`}
-            title="Cancel scraping"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          </div><div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleReopenScrapingPopup}
+              className={`p-1 rounded-full transition-all
+                ${theme === 'dark'
+                  ? 'text-blue-400 hover:text-blue-200 hover:bg-blue-800/70'
+                  : 'text-blue-600 hover:text-blue-800 hover:bg-blue-200/70'}`}
+              title="View scraped data or modify settings"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelScraping}
+              className={`p-1 rounded-full transition-all
+                ${theme === 'dark'
+                  ? 'text-orange-400 hover:text-orange-200 hover:bg-orange-800/70'
+                  : 'text-orange-600 hover:text-orange-800 hover:bg-orange-200/70'}`}
+              title="Cancel scraping"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
