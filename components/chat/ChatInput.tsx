@@ -14,7 +14,7 @@ interface ChatInputProps {
   _previousMessages?: { role: string; content: string }[];
   onInputFocus?: () => void;
   onStopGeneration?: () => void;
-  onScrapWebsite?: (url: string, mode?: 'content' | 'links' | 'images' | 'all') => void;
+  onScrapWebsite?: (url: string, prompt: string, mode?: 'content' | 'links' | 'images' | 'all') => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -30,16 +30,24 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onStopGeneration,
   onScrapWebsite
 }) => {
-  const [message, setMessage] = useState('');  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [message, setMessage] = useState('');  const textareaRef = useRef<HTMLTextAreaElement>(null);  const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [cursorPosition, setCursorPosition] = useState(0);
-  const handleSendMessage = useCallback(() => {
+  const [scrapingUrl, setScrapingUrl] = useState<string | null>(null);  const handleSendMessage = useCallback(() => {
     if (message.trim()) {
-      onSendMessage(message, ragMode ? 'rag' : 'standard', selectedFile);
+      // If we have a scraping URL waiting, execute scraping with the message as prompt
+      if (scrapingUrl) {
+        if (onScrapWebsite) {
+          onScrapWebsite(scrapingUrl, message.trim());
+        }
+        setScrapingUrl(null);
+      } else {
+        // Normal message sending
+        onSendMessage(message, ragMode ? 'rag' : 'standard', selectedFile);
+      }
       setMessage('');
     }
-  }, [message, ragMode, selectedFile, onSendMessage]);
+  }, [message, ragMode, selectedFile, onSendMessage, scrapingUrl, onScrapWebsite]);
 
   // Handle text input changes and detect "@" symbol
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -61,19 +69,23 @@ const ChatInput: React.FC<ChatInputProps> = ({
       setContextMenuVisible(false);
     }
   }, []);
-
   // Handle context menu scrap mode selection
   const handleScrapModeSelect = useCallback(async (url: string) => {
-    if (onScrapWebsite) {
-      onScrapWebsite(url);
-    }
     setContextMenuVisible(false);
+    
+    // Set the scraping URL and update the message to prompt for instructions
+    setScrapingUrl(url);
     
     // Remove the "@" from the message and add a scraping indicator
     const beforeAt = message.slice(0, cursorPosition - 1);
     const afterAt = message.slice(cursorPosition);
-    setMessage(`${beforeAt}[Scraping: ${url}]${afterAt}`);
-  }, [message, cursorPosition, onScrapWebsite]);
+    setMessage(`${beforeAt}${afterAt}`);
+    
+    // Update the placeholder to indicate we're waiting for scraping instructions
+    if (textareaRef.current) {
+      textareaRef.current.placeholder = `Enter instructions for scraping: ${url}`;
+    }
+  }, [message, cursorPosition]);
 
   const handleContextMenuClose = useCallback(() => {
     setContextMenuVisible(false);
@@ -169,6 +181,46 @@ const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
 
+      {/* Scraping mode indicator */}
+      {scrapingUrl && (
+        <div className={`flex items-center gap-2 p-2 mb-2 rounded-lg backdrop-blur-sm border-l-4
+          ${theme === 'dark'
+            ? 'bg-orange-900/20 border-orange-500 text-orange-300'
+            : 'bg-orange-50/90 border-orange-400 text-orange-700'}`}
+        >
+          <div className={`p-1 rounded ${
+            theme === 'dark' ? 'bg-orange-800/40' : 'bg-orange-100'
+          }`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9l7 7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9l-7 7" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-medium ${theme === 'dark' ? 'text-orange-300' : 'text-orange-700'}`}>
+              Scraping Mode Active
+            </p>
+            <p className={`text-xs truncate ${theme === 'dark' ? 'text-orange-400' : 'text-orange-600'}`}>
+              URL: {scrapingUrl}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setScrapingUrl(null)}
+            className={`p-1 rounded-full transition-all
+              ${theme === 'dark'
+                ? 'text-orange-400 hover:text-orange-200 hover:bg-orange-800/70'
+                : 'text-orange-600 hover:text-orange-800 hover:bg-orange-200/70'}`}
+            title="Cancel scraping"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {selectedFile && (
         <div className={`flex items-center gap-1.5 p-1.5 mb-1.5 rounded-lg backdrop-blur-sm
           ${theme === 'dark'
@@ -226,11 +278,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
               ${theme === 'dark'
                 ? 'bg-transparent text-white placeholder-gray-400 focus:outline-none'
                 : 'bg-transparent text-gray-800 placeholder-gray-400 focus:outline-none'}`}
-            placeholder={selectedFile
-              ? `Décrire...`
-              : ragMode
-                ? `Posez votre question... (type @ for scraping)`
-                : `Écrivez un message... (type @ for scraping)`}
+            placeholder={scrapingUrl
+              ? `Enter instructions for scraping: ${scrapingUrl}`
+              : selectedFile
+                ? `Décrire...`
+                : ragMode
+                  ? `Posez votre question... (type @ for scraping)`
+                  : `Écrivez un message... (type @ for scraping)`}
             value={message}
             onChange={handleInputChange}
             disabled={loading}
@@ -257,22 +311,23 @@ const ChatInput: React.FC<ChatInputProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-        ) : (
-          <button
+        ) : (          <button
             className={`h-auto self-stretch px-3 sm:px-4 flex items-center justify-center flex-shrink-0 transition-all duration-300 disabled:opacity-50 group
               ${message.trim() && !loading
-                ? selectedFile
-                  ? `bg-gradient-to-br from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-white shadow-inner`
-                  : ragMode
-                    ? `bg-gradient-to-br from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-inner`
-                    : `bg-gradient-to-br from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-inner`
+                ? scrapingUrl
+                  ? `bg-gradient-to-br from-orange-600 to-red-500 hover:from-orange-500 hover:to-red-400 text-white shadow-inner`
+                  : selectedFile
+                    ? `bg-gradient-to-br from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-white shadow-inner`
+                    : ragMode
+                      ? `bg-gradient-to-br from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-inner`
+                      : `bg-gradient-to-br from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-inner`
                 : theme === 'dark'
                   ? 'bg-gray-800/90 text-gray-400 hover:bg-gray-700/90 hover:text-gray-300'
                   : 'bg-gray-100/90 text-gray-400 hover:bg-gray-200/90 hover:text-gray-500'}`}
             onClick={handleSendMessage}
             disabled={!message.trim()}
             type="button"
-            aria-label="Envoyer"
+            aria-label={scrapingUrl ? "Start Scraping" : "Envoyer"}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 sm:h-5 sm:w-5 transition-all duration-300 ${message.trim() && !loading ? 'transform group-hover:translate-x-1' : ''}`} viewBox="0 0 20 20" fill="currentColor">
               <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />

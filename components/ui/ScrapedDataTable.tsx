@@ -17,6 +17,13 @@ interface ScrapedDataItem {
     description?: string;
     keywords?: string;
     author?: string;
+    companies?: Array<{
+      name: string;
+      website?: string;
+      description?: string;
+      employees?: string;
+      tags?: string[];
+    }>;
   };
   scrapedAt?: string;
 }
@@ -24,16 +31,17 @@ interface ScrapedDataItem {
 interface ScrapedDataTableProps {
   data: ScrapedDataItem;
   theme: 'dark' | 'light';
-  onExportCSV: (data: ScrapedDataItem, type: 'content' | 'links' | 'images' | 'metadata') => void;
+  onExportCSV: (data: ScrapedDataItem, type: 'content' | 'links' | 'images' | 'metadata' | 'companies') => void;
 }
 
 const ScrapedDataTable: React.FC<ScrapedDataTableProps> = ({ data, theme, onExportCSV }) => {
-  const [activeTab, setActiveTab] = useState<'content' | 'links' | 'images' | 'metadata'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'links' | 'images' | 'metadata' | 'companies'>('content');
 
   const tabs = [
     { id: 'content', label: 'Content', icon: '📄' },
     { id: 'links', label: 'Links', icon: '🔗', count: data.links?.length || 0 },
     { id: 'images', label: 'Images', icon: '🖼️', count: data.images?.length || 0 },
+    { id: 'companies', label: 'Companies', icon: '🏢', count: data.metadata?.companies?.length || 0 },
     { id: 'metadata', label: 'Metadata', icon: '📋' }
   ] as const;
 
@@ -193,16 +201,92 @@ const ScrapedDataTable: React.FC<ScrapedDataTableProps> = ({ data, theme, onExpo
                 No images found
               </p>
             )}
+          </div>        )}
+
+        {activeTab === 'companies' && (
+          <div className="space-y-3">
+            <h4 className="font-medium mb-2">Extracted Companies ({data.metadata?.companies?.length || 0})</h4>
+            {data.metadata?.companies && data.metadata.companies.length > 0 ? (
+              <div className="space-y-3">
+                {data.metadata.companies.map((company, index) => (
+                  <div
+                    key={index}
+                    className={`p-4 rounded-lg border ${
+                      theme === 'dark' ? 'bg-gray-750 border-gray-600' : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between">
+                        <h5 className="font-semibold text-lg">{company.name}</h5>
+                        {company.employees && (
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            theme === 'dark' ? 'bg-blue-600/20 text-blue-400' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {company.employees}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {company.website && (
+                        <div>
+                          <span className="font-medium text-sm">Website: </span>
+                          <a
+                            href={company.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`text-sm hover:underline ${
+                              theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                            }`}
+                          >
+                            {company.website}
+                          </a>
+                        </div>
+                      )}
+                      
+                      {company.description && (
+                        <div>
+                          <span className="font-medium text-sm">Description: </span>
+                          <p className="text-sm mt-1">{company.description}</p>
+                        </div>
+                      )}
+                      
+                      {company.tags && company.tags.length > 0 && (
+                        <div>
+                          <span className="font-medium text-sm">Tags: </span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {company.tags.map((tag, tagIndex) => (
+                              <span
+                                key={tagIndex}
+                                className={`px-2 py-0.5 text-xs rounded-full ${
+                                  theme === 'dark' 
+                                    ? 'bg-purple-600/20 text-purple-400' 
+                                    : 'bg-purple-100 text-purple-700'
+                                }`}
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                No companies found
+              </p>
+            )}
           </div>
         )}
 
         {activeTab === 'metadata' && (
           <div className="space-y-3">
-            <h4 className="font-medium mb-2">Page Metadata</h4>
-            {data.metadata && Object.keys(data.metadata).length > 0 ? (
+            <h4 className="font-medium mb-2">Page Metadata</h4>            {data.metadata && Object.keys(data.metadata).length > 0 ? (
               <div className="space-y-3">
                 {Object.entries(data.metadata).map(([key, value]) => 
-                  value ? (
+                  value && key !== 'companies' && typeof value === 'string' ? (
                     <div
                       key={key}
                       className={`p-3 rounded border ${

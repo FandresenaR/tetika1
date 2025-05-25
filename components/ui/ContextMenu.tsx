@@ -47,9 +47,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   const handleScrapModeClick = () => {
     setShowUrlInput(true);
   };
-
-  const handleUrlSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUrlSubmit = () => {
     if (urlInput.trim()) {
       onScrapModeSelect(urlInput.trim());
       setUrlInput('');
@@ -66,6 +64,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       } else {
         onClose();
       }
+    } else if (e.key === 'Enter' && urlInput.trim()) {
+      handleUrlSubmit();
     }
   };
 
@@ -130,25 +130,25 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
               Enter website URL to scrape data from
             </p>
           </div>
-          
-          <form onSubmit={handleUrlSubmit} className="space-y-3">
+            <div className="space-y-3">
             <input
               ref={urlInputRef}
               type="url"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="https://example.com"
               className={`w-full px-3 py-2 text-sm rounded-md border transition-colors ${
                 theme === 'dark'
                   ? 'bg-gray-700/50 border-gray-600 text-gray-200 placeholder-gray-400 focus:border-purple-500'
                   : 'bg-gray-50 border-gray-300 text-gray-800 placeholder-gray-500 focus:border-purple-500'
               } focus:outline-none focus:ring-2 focus:ring-purple-500/20`}
-              required
             />
             
             <div className="flex gap-2">
               <button
-                type="submit"
+                type="button"
+                onClick={handleUrlSubmit}
                 disabled={!urlInput.trim()}
                 className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   urlInput.trim()
@@ -178,7 +178,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
                 Cancel
               </button>
             </div>
-          </form>
+          </div>
         </div>
       )}
     </div>

@@ -21,6 +21,13 @@ interface ScrapedData {
     description?: string;
     keywords?: string;
     author?: string;
+    companies?: Array<{
+      name: string;
+      website?: string;
+      description?: string;
+      employees?: string;
+      tags?: string[];
+    }>;
   };
 }
 
@@ -57,6 +64,139 @@ function cleanText(text: string): string {
     .replace(/\s+/g, ' ')
     .replace(/\n+/g, '\n')
     .trim();
+}
+
+// Helper function to extract structured company data
+function extractCompanyData($: cheerio.CheerioAPI, url: string): Array<{
+  name: string;
+  website?: string;
+  description?: string;
+  employees?: string;
+  tags?: string[];
+}> {
+  const companies: Array<{
+    name: string;
+    website?: string;
+    description?: string;
+    employees?: string;
+    tags?: string[];
+  }> = [];
+  
+  // Look for company/partner cards or listings
+  const companySelectors = [
+    '.company',
+    '.partner',
+    '.startup',
+    '.exhibitor',
+    '.member',
+    '.sponsor',
+    '[class*="company"]',
+    '[class*="partner"]',
+    '[class*="startup"]',
+    '[class*="exhibitor"]'
+  ];
+  
+  companySelectors.forEach(selector => {
+    $(selector).each((_, element) => {
+      const $el = $(element);
+      
+      // Extract company name
+      let name = '';
+      const nameSelectors = ['h1', 'h2', 'h3', 'h4', '.name', '.title', '.company-name', '[class*="name"]'];
+      for (const nameSelector of nameSelectors) {
+        const nameEl = $el.find(nameSelector).first();
+        if (nameEl.length && nameEl.text().trim()) {
+          name = cleanText(nameEl.text());
+          break;
+        }
+      }
+      
+      // If no name found, try the element text directly
+      if (!name) {
+        const elementText = cleanText($el.text());
+        if (elementText && elementText.length < 100) {
+          name = elementText.split('\n')[0] || elementText.split(' ').slice(0, 4).join(' ');
+        }
+      }
+      
+      if (name && name.length > 2 && name.length < 200) {
+        const company: {
+          name: string;
+          website?: string;
+          description?: string;
+          employees?: string;
+          tags?: string[];
+        } = { name };
+        
+        // Extract website
+        const linkEl = $el.find('a[href]').first();
+        if (linkEl.length) {
+          const href = linkEl.attr('href');
+          if (href && (href.startsWith('http') || href.startsWith('www'))) {
+            company.website = normalizeUrl(href, url);
+          }
+        }
+        
+        // Extract description
+        const descSelectors = ['.description', '.bio', '.about', 'p', '.summary'];
+        for (const descSelector of descSelectors) {
+          const descEl = $el.find(descSelector).first();
+          if (descEl.length && descEl.text().trim() && descEl.text().trim() !== name) {
+            company.description = cleanText(descEl.text()).substring(0, 300);
+            break;
+          }
+        }
+        
+        // Extract employee count or company size
+        const fullText = $el.text().toLowerCase();
+        const employeePatterns = [
+          /(\d+[\-\+]?)\s*(?:employees?|salariés?|personnes?)/gi,
+          /(?:employees?|salariés?)[\s:]*(\d+[\-\+]?)/gi,
+          /(\d+[\-\+]?)\s*(?:people|pers\.?)/gi
+        ];
+        
+        for (const pattern of employeePatterns) {
+          const match = fullText.match(pattern);
+          if (match) {
+            company.employees = match[0];
+            break;
+          }
+        }
+        
+        // Extract tags/hashtags
+        const tags: string[] = [];
+        const hashtagMatches = $el.text().match(/#[\w\-]+/g);
+        if (hashtagMatches) {
+          tags.push(...hashtagMatches);
+        }
+        
+        // Look for category or industry information
+        const categorySelectors = ['.category', '.industry', '.sector', '.tags', '.keywords'];
+        categorySelectors.forEach(catSelector => {
+          const catEl = $el.find(catSelector);
+          if (catEl.length) {
+            const catText = cleanText(catEl.text());
+            if (catText && !tags.includes(catText)) {
+              tags.push(catText);
+            }
+          }
+        });
+        
+        if (tags.length > 0) {
+          company.tags = tags.slice(0, 10); // Limit to 10 tags
+        }
+        
+        companies.push(company);
+      }
+    });
+  });
+  
+  // Remove duplicates based on name
+  const uniqueCompanies = companies.filter((company, index, self) => 
+    index === self.findIndex(c => c.name.toLowerCase() === company.name.toLowerCase())
+  );
+  
+  return uniqueCompanies.slice(0, 50); // Limit to 50 companies
 }
 
 // Main scraping function
@@ -98,9 +238,7 @@ async function scrapeWebsite(url: string): Promise<ScrapedData | ScrapingError> 
     const description = $('meta[name="description"]').attr('content') || 
                        $('meta[property="og:description"]').attr('content') || '';
     const keywords = $('meta[name="keywords"]').attr('content') || '';
-    const author = $('meta[name="author"]').attr('content') || '';
-
-    // Extract main content - try multiple strategies
+    const author = $('meta[name="author"]').attr('content') || '';    // Extract main content - try multiple strategies with focus on business data
     let content = '';
     
     // Strategy 1: Look for main content areas
@@ -112,6 +250,14 @@ async function scrapeWebsite(url: string): Promise<ScrapedData | ScrapingError> 
       '.post-content',
       '.entry-content',
       '.article-content',
+      '.partners',
+      '.partner-list',
+      '.companies',
+      '.company-list',
+      '.exhibitors',
+      '.startups',
+      '.sponsors',
+      '.members',
       'body'
     ];
 
@@ -133,14 +279,31 @@ async function scrapeWebsite(url: string): Promise<ScrapedData | ScrapingError> 
     // Limit content length
     if (content.length > 5000) {
       content = content.substring(0, 5000) + '...';
-    }
-
-    // Extract links
+    }    // Extract links with enhanced business data extraction
     const links: Array<{ text: string; url: string; href: string }> = [];
     $('a[href]').each((_, element) => {
       const linkElement = $(element);
       const href = linkElement.attr('href');
-      const text = cleanText(linkElement.text());
+      let text = cleanText(linkElement.text());
+      
+      // If link text is empty, try to get it from parent elements or attributes
+      if (!text || text.length === 0) {
+        text = cleanText(linkElement.attr('title') || linkElement.attr('alt') || linkElement.find('img').attr('alt') || '');
+      }
+      
+      // Look for company names in nearby elements if link text is still minimal
+      if (!text || text.length < 3) {
+        const parentText = cleanText(linkElement.parent().text());
+        const nextText = cleanText(linkElement.next().text());
+        const prevText = cleanText(linkElement.prev().text());
+        
+        // Use the shortest meaningful text
+        [parentText, nextText, prevText].forEach(candidateText => {
+          if (candidateText && candidateText.length > 2 && candidateText.length < 100 && !text) {
+            text = candidateText;
+          }
+        });
+      }
       
       if (href && text && text.length > 0 && text.length < 200) {
         const normalizedUrl = normalizeUrl(href, url);
@@ -166,13 +329,14 @@ async function scrapeWebsite(url: string): Promise<ScrapedData | ScrapingError> 
           alt: cleanText(alt)
         });
       }
-    });
-
-    // Limit arrays to reasonable sizes
+    });    // Limit arrays to reasonable sizes
     const limitedLinks = links.slice(0, 50);
     const limitedImages = images.slice(0, 20);
 
-    console.log(`[SCRAPER] Successfully scraped ${url}: ${content.length} chars, ${limitedLinks.length} links, ${limitedImages.length} images`);
+    // Extract structured company data
+    const companies = extractCompanyData($, url);
+
+    console.log(`[SCRAPER] Successfully scraped ${url}: ${content.length} chars, ${limitedLinks.length} links, ${limitedImages.length} images, ${companies.length} companies`);
 
     return {
       url,
@@ -183,7 +347,8 @@ async function scrapeWebsite(url: string): Promise<ScrapedData | ScrapingError> 
       metadata: {
         description: cleanText(description),
         keywords: cleanText(keywords),
-        author: cleanText(author)
+        author: cleanText(author),
+        companies: companies.length > 0 ? companies : undefined
       }
     };
 

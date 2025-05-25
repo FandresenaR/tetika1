@@ -50,8 +50,7 @@ const ChatInterface: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   // État pour détecter si l'écran est mobile
   const [isMobile, setIsMobile] = useState(false);
-  
-  // État pour les données de scraping
+    // État pour les données de scraping
   interface ScrapedDataItem {
     url: string;
     title: string;
@@ -69,6 +68,13 @@ const ChatInterface: React.FC = () => {
       description?: string;
       keywords?: string;
       author?: string;
+      companies?: Array<{
+        name: string;
+        website?: string;
+        description?: string;
+        employees?: string;
+        tags?: string[];
+      }>;
     };
     scrapedAt?: string;
   }
@@ -677,9 +683,8 @@ const ChatInterface: React.FC = () => {
     // La chaîne vide comme premier message ne sera pas affichée à l'utilisateur
     // mais permettra d'initialiser le mode
     setRagMode(mode === 'rag');
-    handleSendMessage("Bonjour TETIKA, peux-tu m&apos;aider ?", mode);  };
-  // Function to handle web scraping
-  const handleScrapWebsite = async (url: string, mode?: 'content' | 'links' | 'images' | 'all') => {
+    handleSendMessage("Bonjour TETIKA, peux-tu m&apos;aider ?", mode);  };  // Function to handle web scraping
+  const handleScrapWebsite = async (url: string, prompt: string, mode?: 'content' | 'links' | 'images' | 'all') => {
     try {
       setLoading(true);
       
@@ -691,28 +696,39 @@ const ChatInterface: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url, mode: apiMode }),
+        body: JSON.stringify({ url, mode: apiMode, prompt }),
       });
 
       if (!response.ok) {
         throw new Error(`Erreur HTTP: ${response.status}`);
-      }
-
-      const data = await response.json();
+      }const response_data = await response.json();
       
-      if (data.error) {
-        throw new Error(data.error);
+      if (response_data.error) {
+        throw new Error(response_data.message || 'Erreur de scraping');
       }
 
+      // Extract the actual scraped data from the API response
+      const scrapedInfo = response_data.data || response_data;
+      
       // Set the scraped data and show the modal
-      setScrapedData(data);
-      setShowScrapedDataTable(true);
-
-      // Add a success message to the chat
+      setScrapedData(scrapedInfo);
+      setShowScrapedDataTable(true);      // Add a success message to the chat
       const successMessage: Message = {
         id: generateId(),
         role: 'system',
-        content: `✅ Site web scrapé avec succès: ${url}\n\nDonnées extraites:\n- Titre: ${data.title}\n- Contenu: ${data.content ? 'Disponible' : 'Non disponible'}\n- Liens: ${data.links?.length || 0} trouvés\n- Images: ${data.images?.length || 0} trouvées\n- Métadonnées: ${data.metadata ? 'Disponibles' : 'Non disponibles'}`,
+        content: `✅ Site web scrapé avec succès: ${url}
+
+**Instructions:** ${prompt}
+
+**Données extraites:**
+- **Titre:** ${scrapedInfo.title || 'Non disponible'}
+- **Contenu:** ${scrapedInfo.content ? 'Disponible' : 'Non disponible'}
+- **Liens:** ${scrapedInfo.links?.length || 0} trouvés
+- **Images:** ${scrapedInfo.images?.length || 0} trouvées
+- **Entreprises:** ${scrapedInfo.metadata?.companies?.length || 0} détectées
+- **Métadonnées:** ${scrapedInfo.metadata ? 'Disponibles' : 'Non disponibles'}
+
+Vous pouvez consulter les données détaillées dans le tableau qui s'est ouvert.`,
         timestamp: Date.now()
       };
       
@@ -734,9 +750,8 @@ const ChatInterface: React.FC = () => {
       setLoading(false);
     }
   };
-
   // Function to handle CSV export
-  const handleExportCSV = (data: ScrapedDataItem, type: 'content' | 'links' | 'images' | 'metadata') => {
+  const handleExportCSV = (data: ScrapedDataItem, type: 'content' | 'links' | 'images' | 'metadata' | 'companies') => {
     try {
       let csvContent = '';
       let filename = '';
@@ -769,12 +784,21 @@ const ChatInterface: React.FC = () => {
           filename = `images_${new Date().toISOString().split('T')[0]}.csv`;
           break;
 
-        case 'metadata':
+        case 'companies':
+          csvContent = 'Name,Website,Description,Employees,Tags\n';
+          data.metadata?.companies?.forEach(company => {
+            const tags = company.tags ? company.tags.join('; ') : '';
+            csvContent += `"${company.name.replace(/"/g, '""')}","${company.website || ''}","${(company.description || '').replace(/"/g, '""')}","${company.employees || ''}","${tags.replace(/"/g, '""')}"\n`;
+          });
+          filename = `companies_${new Date().toISOString().split('T')[0]}.csv`;
+          break;        case 'metadata':
           csvContent = 'Property,Value\n';
           if (data.metadata) {
             Object.entries(data.metadata).forEach(([key, value]) => {
-              if (value) {
-                csvContent += `"${key}","${value.replace(/"/g, '""')}"\n`;
+              if (value && key !== 'companies') {
+                if (typeof value === 'string') {
+                  csvContent += `"${key}","${value.replace(/"/g, '""')}"\n`;
+                }
               }
             });
           }
