@@ -5,6 +5,34 @@ Tous les changements notables apportés au projet Tetika seront documentés dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-05-25
+
+### Ajouté
+
+-Code Block Updated in RAG Mode:
+
+## 📋 **Summary**
+
+The implementation is **completely technology-agnostic** because:
+
+1. **Detection**: Uses standard markdown code block syntax (```` ```)
+2. **Processing**: Preserves entire code blocks as units
+3. **Rendering**: ReactMarkdown handles syntax highlighting for any language
+4. **Features**: All enhanced features work universally
+5. **Extensibility**: Easy to add new languages to the extension mapping
+
+**Result**: Whether the AI generates Python, JavaScript, Rust, Go, Swift, or any other language code in RAG mode, it will be properly formatted with all the enhanced CodeBlock features intact.## 📋 **Summary**
+
+The implementation is **completely technology-agnostic** because:
+
+1. **Detection**: Uses standard markdown code block syntax (```` ```)
+2. **Processing**: Preserves entire code blocks as units
+3. **Rendering**: ReactMarkdown handles syntax highlighting for any language
+4. **Features**: All enhanced features work universally
+5. **Extensibility**: Easy to add new languages to the extension mapping
+
+**Result**: Whether the AI generates Python, JavaScript, Rust, Go, Swift, or any other language code in RAG mode, it will be properly formatted with all the enhanced CodeBlock features intact.
+
 ## [0.2.0] - 2025-05-13
 
 ### Ajouté
@@ -29,3 +57,4 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Fonctionnalité RAG (Retrieval-Augmented Generation)
 - Analyse avancée de fichiers
 - Interface utilisateur responsive
+

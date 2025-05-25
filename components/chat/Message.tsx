@@ -409,28 +409,96 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
         <span className="text-xs truncate max-w-[100px]">{message.attachedFile.name}</span>
       </span>
     );
-  };
-
-  const processMessageContent = () => {
+  };  const processMessageContent = () => {
     if (!message.content) {
       return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content || ''}</ReactMarkdown>;
     }
 
+    // If no sources, use normal ReactMarkdown which will handle code blocks properly
     if (!message.sources || message.sources.length === 0) {
       return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
+    }    // For RAG mode with sources, we need to carefully process the content while preserving code blocks
+    // First, let's check if there are code blocks and handle them specially
+    const hasCodeBlocks = message.content.includes('```');
+    
+    if (hasCodeBlocks) {
+      // Split content into segments, preserving code blocks as complete units
+      const segments: Array<{ type: 'text' | 'code'; content: string }> = [];
+      const lines = message.content.split('\n');
+      let currentSegment: string[] = [];
+      let inCodeBlock = false;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        if (line.trim().startsWith('```')) {
+          if (!inCodeBlock) {
+            // Starting a code block
+            if (currentSegment.length > 0) {
+              segments.push({ type: 'text', content: currentSegment.join('\n') });
+              currentSegment = [];
+            }
+            inCodeBlock = true;
+            currentSegment.push(line);
+          } else {
+            // Ending a code block
+            currentSegment.push(line);
+            segments.push({ type: 'code', content: currentSegment.join('\n') });
+            currentSegment = [];
+            inCodeBlock = false;
+          }
+        } else {
+          currentSegment.push(line);
+        }
+      }
+      
+      // Add any remaining content
+      if (currentSegment.length > 0) {
+        segments.push({ 
+          type: inCodeBlock ? 'code' : 'text', 
+          content: currentSegment.join('\n') 
+        });
+      }
+      
+      // Process each segment
+      const processedSegments = segments.map((segment, index) => {
+        if (segment.type === 'code') {
+          // Render code blocks directly with ReactMarkdown to use our CodeBlock component
+          return (
+            <div key={`code-${index}`}>
+              <ReactMarkdown components={MarkdownComponents as Components}>
+                {segment.content}
+              </ReactMarkdown>
+            </div>
+          );
+        } else {
+          // Process text segments for source references
+          return (
+            <div key={`text-${index}`}>
+              {processTextSegmentWithSources(segment.content)}
+            </div>
+          );
+        }
+      });
+      
+      return <div className="prose-content">{processedSegments}</div>;
     }
 
-    // Fonction pour déterminer si une ligne est uniquement une référence source
+    // No code blocks, process normally for source references
+    return processTextSegmentWithSources(message.content);
+  };
+
+  // Helper function to process text content with source references
+  const processTextSegmentWithSources = (content: string) => {
+    // Function to determine if a line is only a source reference
     const isSourceReferenceLine = (line: string) => {
-      // Vérifie si la ligne contient uniquement une référence comme [1], [2], etc.
+      // Check if the line contains only a reference like [1], [2], etc.
       const onlyRefRegex = /^\s*\[(\d+)\]\s*$|^\s*\((\d+)\)\s*$|^\s*(\d+)⃣\s*$|^\s*(\d+)️⃣\s*$/;
-      // Vérifie si la ligne commence par "Source:", "Sources:", etc.
+      // Check if the line starts with "Source:", "Sources:", etc.
       const sourceHeaderRegex = /^\s*sources?\s*:/i;
       
       return onlyRefRegex.test(line) || sourceHeaderRegex.test(line);
-    };
-
-    const createReferenceElement = (refNumber: string, index: number) => {
+    };    const createReferenceElement = (refNumber: string, index: number) => {
       const numRef = parseInt(refNumber, 10);
       if (numRef > 0 && numRef <= (message.sources?.length || 0)) {
         const source = message.sources?.[numRef - 1];
@@ -461,24 +529,27 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       return <span key={`plain-${index}`}>{`[${refNumber}]`}</span>;
     };
 
-    const paragraphs = message.content.split('\n');
-    const processedParagraphs = paragraphs.map((paragraph, paragraphIndex) => {
-      // Ignorer les lignes qui sont uniquement des références sources
-      if (isSourceReferenceLine(paragraph)) {
+    // For text content, we still need to handle source references
+    // but we need to be more careful about line-by-line processing
+    const lines = content.split('\n');
+    const processedLines = lines.map((line, lineIndex) => {
+      // Skip source-only reference lines
+      if (isSourceReferenceLine(line)) {
         return null;
       }
 
-      if (!paragraph.trim()) {
-        return <p key={`empty-${paragraphIndex}`}>&nbsp;</p>;
+      if (!line.trim()) {
+        return <br key={`br-${lineIndex}`} />;
       }
 
-      const cleanedParagraph = paragraph.replace(/source\s*:/gi, '');
+      const cleanedLine = line.replace(/source\s*:/gi, '');
 
+      // Check for source references in this line
       const refRegex = /\[(\d+)\]|\((\d+)\)|(\d+)⃣|(\d+)️⃣/g;
       const refMatches: Array<{fullMatch: string; refNumber: string; index: number}> = [];
       let match;
 
-      while ((match = refRegex.exec(cleanedParagraph)) !== null) {
+      while ((match = refRegex.exec(cleanedLine)) !== null) {
         refMatches.push({
           fullMatch: match[0],
           refNumber: match[1] || match[2] || match[3] || match[4],
@@ -487,49 +558,57 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       }
 
       if (refMatches.length === 0) {
+        // No references, just render the line as markdown
         return (
-          <ReactMarkdown key={`p-${paragraphIndex}`} components={MarkdownComponents as Components}>
-            {cleanedParagraph}
-          </ReactMarkdown>
+          <div key={`line-${lineIndex}`}>
+            <ReactMarkdown components={MarkdownComponents as Components}>
+              {cleanedLine}
+            </ReactMarkdown>
+          </div>
         );
       }
 
+      // Process the line with references
       const elements: React.ReactElement[] = [];
       let lastIndex = 0;
 
       refMatches.forEach((match, matchIndex) => {
         if (match.index > lastIndex) {
-          const textBefore = cleanedParagraph.substring(lastIndex, match.index);
-          elements.push(
-            <span key={`text-${paragraphIndex}-${matchIndex}`}>
-              {textBefore}
-            </span>
-          );
+          const textBefore = cleanedLine.substring(lastIndex, match.index);
+          if (textBefore.trim()) {
+            elements.push(
+              <ReactMarkdown key={`text-${lineIndex}-${matchIndex}`} components={MarkdownComponents as Components}>
+                {textBefore}
+              </ReactMarkdown>
+            );
+          }
         }
 
-        elements.push(createReferenceElement(match.refNumber, paragraphIndex * 100 + matchIndex));
+        elements.push(createReferenceElement(match.refNumber, lineIndex * 100 + matchIndex));
 
         lastIndex = match.index + match.fullMatch.length;
       });
 
-      if (lastIndex < cleanedParagraph.length) {
-        elements.push(
-          <span key={`text-${paragraphIndex}-end`}>
-            {cleanedParagraph.substring(lastIndex)}
-          </span>
-        );
+      if (lastIndex < cleanedLine.length) {
+        const remainingText = cleanedLine.substring(lastIndex);
+        if (remainingText.trim()) {
+          elements.push(
+            <ReactMarkdown key={`text-${lineIndex}-end`} components={MarkdownComponents as Components}>
+              {remainingText}
+            </ReactMarkdown>
+          );
+        }
       }
 
       return (
-        <div key={`p-wrapped-${paragraphIndex}`} className="markdown-paragraph">
+        <div key={`line-wrapped-${lineIndex}`} className="markdown-line">
           {elements}
         </div>
       );
     })
-    // Filtrer les paragraphes null qui ont été ignorés
-    .filter(paragraph => paragraph !== null);
+    .filter(line => line !== null);
 
-    return <div className="prose-content">{processedParagraphs}</div>;
+    return <div className="prose-content">{processedLines}</div>;
   };
 
   const MarkdownComponents = {
