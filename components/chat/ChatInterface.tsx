@@ -8,6 +8,7 @@ import { moveSettingsButton } from '@/lib/mobile-settings-mover';
 import { FileUploader } from '@/components/ui/FileUploader';
 import SpeechSynthesisCheck from '@/components/ui/SpeechSynthesisCheck';
 import SettingsButton from '@/components/ui/SettingsButton';
+import ScrapedDataTable from '@/components/ui/ScrapedDataTable';
 import { Message, ChatMode, ChatSession } from '@/types';
 import { openRouterModels, getModelById } from '@/lib/models';
 import { isImageFile, isVideoFile, createMediaDescription, createImageContentWithBase64 } from '@/lib/media-utils';
@@ -47,9 +48,33 @@ const ChatInterface: React.FC = () => {
   
   // État pour le fichier sélectionné
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
   // État pour détecter si l'écran est mobile
   const [isMobile, setIsMobile] = useState(false);
+  
+  // État pour les données de scraping
+  interface ScrapedDataItem {
+    url: string;
+    title: string;
+    content: string;
+    links?: Array<{
+      text: string;
+      url: string;
+      href: string;
+    }>;
+    images?: Array<{
+      src: string;
+      alt: string;
+    }>;
+    metadata?: {
+      description?: string;
+      keywords?: string;
+      author?: string;
+    };
+    scrapedAt?: string;
+  }
+  
+  const [scrapedData, setScrapedData] = useState<ScrapedDataItem | null>(null);
+  const [showScrapedDataTable, setShowScrapedDataTable] = useState(false);
   // Anciennement pour les suggestions RAG - supprimé
     // Fonction pour détecter si on est sur mobile
   useEffect(() => {
@@ -1035,8 +1060,7 @@ const ChatInterface: React.FC = () => {
                   ? 'border-gray-800 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 shadow-lg shadow-blue-900/10' 
                   : 'border-gray-200 bg-gradient-to-r from-white via-gray-50 to-white shadow-lg shadow-blue-200/10'
               }`}
-            >
-              <div className="max-w-4xl mx-auto">
+            >              <div className="max-w-4xl mx-auto">
                 <ChatInput 
                   onSendMessage={handleSendMessage}
                   loading={loading}
@@ -1052,6 +1076,7 @@ const ChatInterface: React.FC = () => {
                   }))}
                   onInputFocus={() => {}}
                   onStopGeneration={handleStopGeneration}
+                  onScrapWebsite={handleScrapWebsite}
                 />
               </div>
             </div>
@@ -1127,6 +1152,48 @@ const ChatInterface: React.FC = () => {
                 onClose={() => setShowFileUploader(false)}
                 theme={theme}
               />
+            </div>
+          </div>
+        )}        {/* Scraped Data Table Modal */}
+        {showScrapedDataTable && scrapedData && (
+          <div className="fixed inset-0 flex items-center justify-center backdrop-blur-sm z-50 p-4 bg-black bg-opacity-60">
+            <div className={`relative max-w-6xl w-full max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl transform transition-all duration-300
+              ${theme === 'dark' 
+                ? 'bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700' 
+                : 'bg-gradient-to-br from-white to-gray-50 border border-gray-200'}`}>
+              
+              {/* Header with close button */}
+              <div className={`sticky top-0 z-10 flex items-center justify-between p-4 border-b
+                ${theme === 'dark' 
+                  ? 'bg-gray-900/95 border-gray-700 backdrop-blur-sm' 
+                  : 'bg-white/95 border-gray-200 backdrop-blur-sm'}`}>
+                <h2 className={`text-xl font-semibold
+                  ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                  Données Scrapées - {scrapedData.title}
+                </h2>
+                <button
+                  onClick={() => setShowScrapedDataTable(false)}
+                  title="Fermer"
+                  aria-label="Fermer le tableau des données scrapées"
+                  className={`p-2 rounded-lg transition-colors hover:bg-opacity-80
+                    ${theme === 'dark' 
+                      ? 'text-gray-400 hover:text-white hover:bg-gray-700' 
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Scraped data table */}
+              <div className="p-4">
+                <ScrapedDataTable 
+                  data={scrapedData}
+                  onExport={handleExportCSV}
+                  theme={theme}
+                />
+              </div>
             </div>
           </div>
         )}

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChatMode } from '@/types';
+import ContextMenu from '@/components/ui/ContextMenu';
 
 interface ChatInputProps {
   onSendMessage: (message: string, mode: ChatMode, file: File | null) => void;
@@ -13,6 +14,7 @@ interface ChatInputProps {
   _previousMessages?: { role: string; content: string }[];
   onInputFocus?: () => void;
   onStopGeneration?: () => void;
+  onScrapWebsite?: (url: string, mode?: 'content' | 'links' | 'images' | 'all') => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -25,16 +27,56 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onCancelFileUpload,
   // Removed unused previousMessages parameter by prefixing with underscore
   onInputFocus,
-  onStopGeneration
+  onStopGeneration,
+  onScrapWebsite
 }) => {
   const [message, setMessage] = useState('');  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
+  const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [cursorPosition, setCursorPosition] = useState(0);
   const handleSendMessage = useCallback(() => {
     if (message.trim()) {
       onSendMessage(message, ragMode ? 'rag' : 'standard', selectedFile);
       setMessage('');
     }
   }, [message, ragMode, selectedFile, onSendMessage]);
+
+  // Handle text input changes and detect "@" symbol
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    
+    setMessage(newValue);
+    setCursorPosition(cursorPos);
+    
+    // Check if "@" was just typed
+    if (newValue[cursorPos - 1] === '@') {
+      const rect = e.target.getBoundingClientRect();
+      setContextMenuPosition({
+        x: rect.left + 20,
+        y: rect.top - 150
+      });
+      setContextMenuVisible(true);
+    } else {
+      setContextMenuVisible(false);
+    }
+  }, []);
+  // Handle context menu scrap mode selection
+  const handleScrapModeSelect = useCallback(async (url: string, mode: 'content' | 'links' | 'images' | 'all' = 'all') => {
+    if (onScrapWebsite) {
+      onScrapWebsite(url, mode);
+    }
+    setContextMenuVisible(false);
+    
+    // Remove the "@" from the message and add a scraping indicator
+    const beforeAt = message.slice(0, cursorPosition - 1);
+    const afterAt = message.slice(cursorPosition);
+    setMessage(`${beforeAt}[Scraping ${mode}: ${url}]${afterAt}`);
+  }, [message, cursorPosition, onScrapWebsite]);
+
+  const handleContextMenuClose = useCallback(() => {
+    setContextMenuVisible(false);
+  }, []);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -177,8 +219,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-4.5 sm:w-4.5 transform transition-all file-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
           </svg>
-        </button><div className="relative w-full">
-          <textarea
+        </button><div className="relative w-full">          <textarea
             ref={textareaRef}
             className={`w-full resize-none py-2 px-3 transition-colors duration-200 focus:ring-0 min-h-[40px] max-h-[80px]
               ${theme === 'dark'
@@ -187,10 +228,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
             placeholder={selectedFile
               ? `Décrire...`
               : ragMode
-                ? `Posez votre question...`
-                : `Écrivez un message...`}
+                ? `Posez votre question... (type @ for scraping)`
+                : `Écrivez un message... (type @ for scraping)`}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={handleInputChange}
             disabled={loading}
             rows={1}
           />
@@ -239,8 +280,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-400 rounded-full animate-ping opacity-70"></span>
             )}
           </button>
-        )}
-      </div>      <style jsx global>{`
+        )}      </div>
+      
+      {/* Context Menu */}
+      <ContextMenu
+        visible={contextMenuVisible}
+        position={contextMenuPosition}
+        onScrapModeSelect={handleScrapModeSelect}
+        onClose={handleContextMenuClose}
+        theme={theme}
+      />
+
+      <style jsx global>{`
         @keyframes pulse-slow {
           0%, 100% {
             transform: scaleX(0.1);
