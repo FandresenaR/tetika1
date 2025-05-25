@@ -2,6 +2,19 @@
 
 const nextConfig = {
   reactStrictMode: true,
+  // Disable telemetry which could try to write trace files
+  experimental: {
+    disableOptimizedLoading: true,
+  },  // Exclude temporary files from the build
+  webpack: (config) => {
+    // Add rule to exclude temp files
+    config.module.rules.push({
+      test: /temp-.*\.(ts|js|tsx|jsx)$/,
+      loader: 'ignore-loader',
+    });
+    
+    return config;
+  },
   env: {
     NEXT_PUBLIC_OPENROUTER_API_KEY: process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
     NEXT_PUBLIC_SITE_NAME: process.env.NEXT_PUBLIC_SITE_NAME || process.env.SITE_NAME,

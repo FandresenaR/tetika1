@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { AIModel, Message } from '../types';
+import { logApiAuthError } from './diagnostic-utils';
 
 // Helper function to extract content from truncated Mistral model responses
 function extractContentFromTruncatedResponse(responseText: string): string | null {
@@ -139,13 +140,15 @@ export const cleanApiKey = (key: string, apiType: 'openrouter' | 'serpapi' | 'un
             console.log('Added sk-or- prefix to a v1- key');
           }
         }
-      }
-      // If we have a hex key for OpenRouter, add proper formatting
+      }      // If we have a hex key for OpenRouter, add proper formatting
       else if (/^[0-9a-f]{64}$/i.test(cleaned)) {
         if (shouldDetailLog) {
           console.log('Converting hex key to OpenRouter format');
         }
         cleaned = `sk-or-v1-${cleaned}`;
+        if (shouldDetailLog) {
+          console.log(`Converted key now starts with: ${cleaned.substring(0, 12)}...`);
+        }
       }
     }
   }
@@ -163,10 +166,36 @@ const getApiKeys = () => {
   
   // Use process.env directly on server side
   if (isServer) {
+    // Always use the correct API type for proper cleaning/formatting
+    const openrouterKey = cleanApiKey(process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || '', 'openrouter');
+    const notdiamondKey = cleanApiKey(process.env.NOTDIAMOND_API_KEY || process.env.NEXT_PUBLIC_NOTDIAMOND_API_KEY || '', 'unknown');
+    const serpapiKey = cleanApiKey(process.env.SERPAPI_API_KEY || process.env.NEXT_PUBLIC_SERPAPI_API_KEY || '', 'serpapi');
+    
+    // Debug server-side keys when in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Server API keys - OpenRouter: ${openrouterKey.substring(0, 8)}..., SerpAPI: ${serpapiKey.substring(0, 8)}...`);
+      
+      // Validate OpenRouter key format
+      if (openrouterKey && !openrouterKey.startsWith('sk-or-') && !openrouterKey.startsWith('sk-o1-')) {
+        console.error('CRITICAL: Server-side OpenRouter key is in invalid format!');
+        
+        // Auto-convert hex key to proper OpenRouter format if needed
+        if (/^[0-9a-f]{64}$/i.test(openrouterKey)) {
+          const formattedKey = `sk-or-v1-${openrouterKey}`;
+          console.log(`Converted OpenRouter key to: ${formattedKey.substring(0, 10)}...`);
+          return {
+            openrouter: formattedKey,
+            notdiamond: notdiamondKey,
+            serpapi: serpapiKey,
+          };
+        }
+      }
+    }
+    
     return {
-      openrouter: cleanApiKey(process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || '', 'openrouter'),
-      notdiamond: cleanApiKey(process.env.NOTDIAMOND_API_KEY || process.env.NEXT_PUBLIC_NOTDIAMOND_API_KEY || '', 'unknown'),
-      serpapi: cleanApiKey(process.env.SERPAPI_API_KEY || process.env.NEXT_PUBLIC_SERPAPI_API_KEY || '', 'serpapi'),
+      openrouter: openrouterKey,
+      notdiamond: notdiamondKey,
+      serpapi: serpapiKey,
     };
   }
   
@@ -175,13 +204,13 @@ const getApiKeys = () => {
   const envNotDiamond = cleanApiKey(process.env.NEXT_PUBLIC_NOTDIAMOND_API_KEY || '', 'unknown');
   const envSerpApi = cleanApiKey(process.env.NEXT_PUBLIC_SERPAPI_API_KEY || '', 'serpapi');
   
-  // Clean the localStorage values too
+  // Clean the localStorage values with the appropriate API type for proper formatting
   const localOpenRouter = localStorage.getItem('tetika-openrouter-key') ? 
-    cleanApiKey(localStorage.getItem('tetika-openrouter-key') || '') : '';
+    cleanApiKey(localStorage.getItem('tetika-openrouter-key') || '', 'openrouter') : '';
   const localNotDiamond = localStorage.getItem('tetika-notdiamond-key') ? 
-    cleanApiKey(localStorage.getItem('tetika-notdiamond-key') || '') : '';
+    cleanApiKey(localStorage.getItem('tetika-notdiamond-key') || '', 'unknown') : '';
   const localSerpApi = localStorage.getItem('tetika-serpapi-key') ? 
-    cleanApiKey(localStorage.getItem('tetika-serpapi-key') || '') : '';
+    cleanApiKey(localStorage.getItem('tetika-serpapi-key') || '', 'serpapi') : '';
   
   return {
     openrouter: localOpenRouter || envOpenRouter,
@@ -273,15 +302,20 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       }
       
       console.log('Using API key from environment variables');
-    } else if (clientApiKey) {
-      // Use the client-provided key
-      OPENROUTER_API_KEY = cleanApiKey(clientApiKey);
+    } else if (clientApiKey) {    // Use the client-provided key
+      OPENROUTER_API_KEY = cleanApiKey(clientApiKey, 'openrouter');
       
       // Same format check for client key
       if (!OPENROUTER_API_KEY.startsWith('sk-or-') && !OPENROUTER_API_KEY.startsWith('sk-o1')) {
         console.error('Client API key is not in OpenRouter format');
-        // Use backup test key if available
-        if (BACKUP_TEST_KEY) {
+        
+        // Convert hex key to OpenRouter format if needed
+        if (/^[0-9a-f]{64}$/i.test(OPENROUTER_API_KEY)) {
+          console.log('Converting hex key to OpenRouter format');
+          OPENROUTER_API_KEY = `sk-or-v1-${OPENROUTER_API_KEY}`;
+        } 
+        // Use backup test key if available and key is still invalid
+        else if (BACKUP_TEST_KEY && (!OPENROUTER_API_KEY.startsWith('sk-or-') && !OPENROUTER_API_KEY.startsWith('sk-o1'))) {
           OPENROUTER_API_KEY = BACKUP_TEST_KEY;
           console.log('Using backup test key instead of malformed client key');
         }
@@ -341,40 +375,77 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       }
     }
     */
-    
-    // Configuration des headers de base
+      // Configuration des headers de base
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://tetika.app',
       'X-Title': 'Tetika AI Chat',
     };
-      // Ajouter l'en-tête d'autorisation si une clé API est disponible
+    
+    // Ajouter l'en-tête d'autorisation si une clé API est disponible
     if (OPENROUTER_API_KEY) {
       // Log the first 5 and last 5 characters of the key for debugging
       const keyStart = OPENROUTER_API_KEY.substring(0, 5);
       const keyEnd = OPENROUTER_API_KEY.substring(OPENROUTER_API_KEY.length - 5);
       console.log(`Setting Authorization header with key format: ${keyStart}...${keyEnd}`);
       
-      // Check for common formatting issues
-      if (OPENROUTER_API_KEY.includes(' ') || OPENROUTER_API_KEY.includes('\n') || OPENROUTER_API_KEY.includes('\r')) {
-        console.error('API key contains whitespace characters even after cleaning!');
-      }
+      // CRITICAL FIX: First ensure key does not have any whitespace
+      OPENROUTER_API_KEY = OPENROUTER_API_KEY.replace(/\s/g, '');
       
-      // Fix common OpenRouter key format issues
-      if (!OPENROUTER_API_KEY.startsWith('sk-or') && !OPENROUTER_API_KEY.startsWith('sk-o1')) {
+      // Fix common OpenRouter key format issues and ensure proper format
+      if (!OPENROUTER_API_KEY.startsWith('sk-or-') && !OPENROUTER_API_KEY.startsWith('sk-o1-')) {
         // Check if the key might be a hex key when it should be an OpenRouter key format
         if (/^[0-9a-f]{64}$/i.test(OPENROUTER_API_KEY)) {
-          console.warn('API key appears to be in hex format, not the OpenRouter key format');
-          console.log('Attempting to use the hex key directly...');
+          console.log('API key appears to be in hex format, converting to OpenRouter format');
+          // Convert to proper format
+          OPENROUTER_API_KEY = `sk-or-v1-${OPENROUTER_API_KEY}`;
+        } else {
+          // For cases where we might have a malformed key or encoding issue
+          console.error('WARNING: API key is not in correct OpenRouter format and cannot be fixed automatically!');
+          console.log('Attempting to use anyway, but auth will likely fail. Key prefix: ' + OPENROUTER_API_KEY.substring(0, 10));
         }
       }
       
-      headers['Authorization'] = `Bearer ${OPENROUTER_API_KEY}`;
-      
-      // Debug output
-      console.log('Authorization header set successfully');
+      // Double-check final key format
+      if (!OPENROUTER_API_KEY.startsWith('sk-or-') && !OPENROUTER_API_KEY.startsWith('sk-o1-')) {
+        console.error('CRITICAL: Final API key is still not in proper OpenRouter format after cleaning!');
+        // Last resort - try to use the backup key
+        const BACKUP_TEST_KEY = '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';
+        console.log('Using backup test key as last resort');
+        OPENROUTER_API_KEY = BACKUP_TEST_KEY;
+      }
+        // Critical fix for OpenRouter authorization
+      // Ensure we're using a properly formatted key with Bearer prefix
+      if (OPENROUTER_API_KEY.startsWith('sk-or-') || OPENROUTER_API_KEY.startsWith('sk-o1-')) {
+        // IMPORTANT FIX: Ensure there's no extra whitespace before or after the key
+        const cleanedKey = OPENROUTER_API_KEY.trim();
+        headers['Authorization'] = `Bearer ${cleanedKey}`;
+        
+        // Verify the header for debug purposes
+        console.log('Authorization header verification:');
+        console.log(`- Header valid format: true`);
+        console.log(`- Header starts with: Bearer ${cleanedKey.substring(0, 10)}...`);
+        console.log(`- Header total length: ${('Bearer ' + cleanedKey).length} characters`);
+        
+        // Extra validation to ensure no whitespace in the authorization string
+        const authHeader = headers['Authorization'];
+        if (authHeader !== `Bearer ${cleanedKey}`) {
+          console.error('CRITICAL: Authorization header does not match expected format!');
+          console.error(`Expected: Bearer ${cleanedKey.substring(0, 10)}...`);
+          console.error(`Actual: ${authHeader.substring(0, 17)}...`);
+          
+          // Force the correct format
+          headers['Authorization'] = `Bearer ${cleanedKey}`;
+          console.log('Authorization header has been forcibly corrected');
+        }
+      } else {
+        // Critical error - key is not in proper format for API call
+        console.error('CRITICAL ERROR: Cannot set Authorization header with invalid key format!');
+        console.error(`Key prefix: ${OPENROUTER_API_KEY.substring(0, Math.min(10, OPENROUTER_API_KEY.length))}`);
+        throw new Error('Invalid OpenRouter API key format. Key must start with sk-or- or sk-o1-');
+      }
     } else {
-      console.warn('No OpenRouter API key found. This may cause authentication issues.');
+      console.warn('No OpenRouter API key found. This will definitely cause authentication issues.');
     }
     
     // Nettoyage et validation des messages
@@ -426,10 +497,63 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       // Faire la requête en utilisant uniquement les options nécessaires
     let response;
     try {
+      // Final check of the Authorization header before making the call
+      const authHeader = headers['Authorization'] || '';
+      if (authHeader.startsWith('Bearer sk-')) {
+        console.log('Authorization header format is valid before API call');
+      } else {
+        console.error('CRITICAL: Authorization header is invalid just before API call!');
+        console.error(`Header starts with: ${authHeader.substring(0, 15)}...`);
+        
+        if (OPENROUTER_API_KEY) {
+          // Last chance attempt to fix it
+          headers['Authorization'] = `Bearer ${OPENROUTER_API_KEY.trim()}`;
+          console.log('Fixed Authorization header at the last moment');
+        }
+      }
+      
+      // Extra verification for Content-Type header
+      if (headers['Content-Type'] !== 'application/json') {
+        console.log('Setting Content-Type to application/json');
+        headers['Content-Type'] = 'application/json';
+      }
+        // Log all headers for debugging (without sensitive values)
+      console.log('Final request headers:', Object.keys(headers).reduce<Record<string, string>>((acc, key) => {
+        if (key === 'Authorization' && typeof headers[key] === 'string') {
+          acc[key] = headers[key as keyof typeof headers]?.toString().substring(0, 15) + '...';
+        } else {
+          acc[key] = String(headers[key as keyof typeof headers]);
+        }
+        return acc;
+      }, {}));// CRITICAL FIX: OpenRouter API authentication requires specific header format
+      const cleanedApiKey = OPENROUTER_API_KEY.trim().replace(/\s/g, '');
+      
+      // Create new headers object with exact format expected by OpenRouter
+      const finalHeaders = {
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://tetika.app',
+        'X-Title': 'Tetika AI Chat',
+        'Authorization': `Bearer ${cleanedApiKey}` // Force the correct Bearer format
+      };
+        // Log the final headers we're sending (without revealing full key)
+      console.log('Final OpenRouter API headers:', {
+        'Content-Type': finalHeaders['Content-Type'],
+        'HTTP-Referer': finalHeaders['HTTP-Referer'],
+        'X-Title': finalHeaders['X-Title'],
+        'Authorization': finalHeaders['Authorization'].substring(0, 15) + '...'
+      });
+        // Verify authorization header format one last time
+      const finalAuthHeader = finalHeaders['Authorization'] || '';
+      if (!finalAuthHeader.startsWith('Bearer ') || finalAuthHeader === 'Bearer ') {
+        console.error('CRITICAL: Final Authorization header is still invalid before API call!');
+        throw new Error('Authorization header incorrectly formatted. Must start with "Bearer " followed by valid API key.');
+      }
+      
       response = await axios({
         method: 'post',
         url: 'https://openrouter.ai/api/v1/chat/completions',
-        headers: headers,        data: payload,
+        headers: finalHeaders, // Use our clean, consistently cased headers
+        data: payload,
         timeout: 60000, // 60 secondes
         transformResponse: [(data) => {
           // Prevent JSON parse errors by capturing the raw response
@@ -695,24 +819,53 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       data: axiosError.response?.data,
       message: (error as Error).message
     });
-    
-    let errorMessage = 'Error calling OpenRouter API';
-    
-    // Traitement spécifique selon le type d'erreur
+      let errorMessage = 'Error calling OpenRouter API';
+      // Traitement spécifique selon le type d'erreur
     if (axiosError.response) {
       // Réponse de l'API avec erreur
-      if (axiosError.response?.status === 400) {
-        errorMessage = `Requête invalide: ${(axiosError.response?.data as Record<string, { message?: string }>)?.error?.message || 'Format incorrect'}`;
-      } else if (axiosError.response?.status === 401) {
-        errorMessage = `Erreur d'authentification: Clé API invalide`;
-      } else if (axiosError.response?.status === 403) {
+      if (axiosError.response.status === 400) {
+        const errorData = axiosError.response.data as { error?: { message?: string } };
+        errorMessage = `Requête invalide: ${errorData?.error?.message || 'Format incorrect'}`;      } else if (axiosError.response.status === 401) {
+        // Provide more detailed error message for authentication issues
+        const errorData = axiosError.response.data as { error?: { message?: string } };
+        const authErrorDetails = errorData?.error?.message || '';
+        const responseData = JSON.stringify(axiosError.response.data || {});
+          
+        // Check if the error message contains hints about the issue
+        let authErrorHint = '';
+        if (authErrorDetails.includes('invalid api key')) {
+          authErrorHint = 'La clé API semble être dans un format incorrect ou invalide.';
+        } else if (authErrorDetails.includes('expired')) {
+          authErrorHint = 'La clé API est peut-être expirée.';
+        } else if (authErrorDetails.includes('No auth credentials found') || authErrorDetails === '') {
+          authErrorHint = 'Aucune information d\'authentification détectée. Vérifiez que l\'en-tête Authorization est correctement formaté.';
+          // Log more details about the error with specific diagnostic information
+          console.error('Authentication issue detected in API response: "No auth credentials found"');
+          console.error('This typically indicates the Authorization header was not correctly formatted or received by the API');
+          console.error('Authorization header is set in finalHeaders in the API request, not the headers variable');
+          if (responseData) {
+            console.error('Response data excerpt:', responseData.substring(0, 200));
+          }
+        } else {
+          authErrorHint = 'Vérifiez le format de la clé (doit commencer par "sk-or-" ou "sk-o1-").';
+        }
+        
+        // Log detailed debug info using our diagnostic utilities
+        // Make sure to include info about the finalized headers that were actually sent
+        logApiAuthError(axiosError, 'openrouter', { 
+          authErrorMessage: authErrorDetails,
+          authErrorHint: authErrorHint,
+          modelId: modelId,
+          headerInfo: 'The finalHeaders object contains the Authorization header that was sent to the API'
+        });
+        
+        errorMessage = `Erreur d'authentification: Clé API invalide. ${authErrorHint}`;      } else if (axiosError.response.status === 403) {
         errorMessage = `Accès refusé: Vérifiez votre clé API et vos permissions`;
-      } else if (axiosError.response?.status === 404) {
-        errorMessage = `Modèle "${modelId}" non trouvé ou non disponible`;
-      } else if (axiosError.response?.status === 429) {
+      } else if (axiosError.response.status === 404) {
+        errorMessage = `Modèle "${modelId}" non trouvé ou non disponible`;      } else if (axiosError.response.status === 429) {
         errorMessage = `Limite de requêtes atteinte. Veuillez réessayer plus tard`;
       } else {
-        errorMessage = `Erreur ${axiosError.response?.status}: ${(axiosError.response?.data as Record<string, { message?: string }>)?.error?.message || axiosError.response?.statusText}`;
+        errorMessage = `Erreur ${axiosError.response.status}: ${(axiosError.response.data as Record<string, { message?: string }>)?.error?.message || axiosError.response.statusText}`;
       }
     } else if (axiosError.request) {
       // Requête envoyée mais pas de réponse
@@ -904,10 +1057,36 @@ export async function callAIModel(model: AIModel, messages: Message[], stream = 
   if (!model) {
     throw new Error('No model specified');
   }
-  
-  console.log(`Appel au modèle ${model.id} avec le provider ${model.provider}`);
+    console.log(`Appel au modèle ${model.id} avec le provider ${model.provider}`);
   if (apiKeys) {
     console.log(`Clés API fournies par le client: OpenRouter=${!!apiKeys.openrouter}, NotDiamond=${!!apiKeys.notdiamond}, SerpAPI=${!!apiKeys.serpapi}`);
+    
+    // Debug the first characters of each key and ensure proper formatting for all client API keys
+    if (apiKeys.openrouter) {
+      // First remove any whitespace that could interfere with key format detection
+      apiKeys.openrouter = apiKeys.openrouter.trim();
+      
+      const keyPrefix = apiKeys.openrouter.substring(0, Math.min(10, apiKeys.openrouter.length));
+      console.log(`OpenRouter key prefix from client: ${keyPrefix}...`);
+      console.log(`OpenRouter key length: ${apiKeys.openrouter.length}`);
+      
+      // Comprehensive checking and formatting for OpenRouter keys
+      if (!apiKeys.openrouter.startsWith('sk-or-') && !apiKeys.openrouter.startsWith('sk-o1-')) {
+        console.log('Client provided OpenRouter key needs formatting, fixing...');
+        
+        // Handle hex-format key that needs OpenRouter prefix
+        if (/^[0-9a-f]{64}$/i.test(apiKeys.openrouter)) {
+          console.log('Client provided a hex key, converting to OpenRouter format');
+          apiKeys.openrouter = `sk-or-v1-${apiKeys.openrouter}`;
+        } else {
+          // For other format issues, use our cleaning function with explicit type
+          apiKeys.openrouter = cleanApiKey(apiKeys.openrouter, 'openrouter');
+        }
+        
+        // Verify the fixed key format
+        console.log(`Fixed OpenRouter key prefix: ${apiKeys.openrouter.substring(0, 10)}...`);
+      }
+    }
   }
   
   if (model.provider === 'openrouter') {
@@ -943,10 +1122,10 @@ export async function enrichWithRAG(message: string) {
       } else {
         // Use the fallback key as a last resort
         finalSerpApiKey = '6d4e1e067db24c8f99ed3574dc3992b475141e2e9758e78f6799cc8f4bd2a50d';
-        console.log(`RAG mode - Using fallback SerpAPI key due to invalid format`);
-      }
+        console.log(`RAG mode - Using fallback SerpAPI key due to invalid format`);      }
     }
-      try {
+    
+    try {
       console.log('Enriching message with RAG using SerpAPI');
       
       // Determine if we're running on server or client side

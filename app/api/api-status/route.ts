@@ -6,11 +6,26 @@ import { cleanApiKey } from '../../../lib/api';
 function isValidApiFormat(key: string, type: 'openrouter' | 'serpapi'): boolean {
   if (!key) return false;
   
+  // Remove any whitespace that might affect validation
+  const cleanKey = key.trim();
+  
   switch (type) {
     case 'openrouter':
-      return key.startsWith('sk-or-') || key.startsWith('sk-o1-');
+      // OpenRouter keys should start with specific prefixes
+      if (cleanKey.startsWith('sk-or-') || cleanKey.startsWith('sk-o1-')) {
+        return true;
+      }
+      // Check if it's a hex key that could be converted to OpenRouter format
+      else if (/^[0-9a-f]{64}$/i.test(cleanKey)) {
+        console.log('API Status Check: Found a hex key being used as an OpenRouter key. This needs to be converted.');
+        return false; // Not valid as-is, needs prefix
+      }
+      return false;
+      
     case 'serpapi':
-      return /^[0-9a-f]{64}$/i.test(key);
+      // SerpAPI keys should be 64-character hex strings
+      return /^[0-9a-f]{64}$/i.test(cleanKey);
+      
     default:
       return false;
   }

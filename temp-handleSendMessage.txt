@@ -1,0 +1,304 @@
+// Import necessary types
+import { Message, ChatMode } from '@/types';
+
+// This is the fixed handleSendMessage function
+const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null) => {
+  if (!content.trim() && !file) return;
+  
+  // Reset le fichier sélectionné après utilisation
+  const currentFile = file || selectedFile;
+  setSelectedFile(null);
+  
+  // Création du message utilisateur avec le fichier joint si présent
+  const userMessage: Message = {
+    id: generateId(),
+    role: 'user',
+    content,
+    timestamp: Date.now(),
+    mode: mode,
+  };
+  
+  // Joindre le fichier au message si présent
+  if (currentFile) {
+    userMessage.attachedFile = {
+      name: currentFile.name,
+      size: currentFile.size,
+      type: currentFile.type || 'unknown',
+      content: ''  // Le contenu sera ajouté ci-dessous si c'est un fichier texte
+    };
+    console.log("Message avec fichier attaché:", userMessage);
+  }
+  
+  // Ajouter le message à la conversation
+  setMessages(prev => [...prev, userMessage]);
+  setLoading(true);
+  
+  try {
+    // Récupérer l'objet modèle complet
+    const modelObject = getModelById(modelId);
+    
+    if (!modelObject) {
+      throw new Error('Modèle non trouvé. Veuillez sélectionner un modèle valide.');
+    }
+    
+    // Préparer les messages pour l'API
+    const messagesForAPI = [...messages, userMessage].map(m => ({
+      role: m.role,
+      content: m.content
+    }));
+    
+    // Traitement spécial pour les fichiers
+    if (currentFile) {
+      // Extensions de fichiers texte reconnues
+      const textExtensions = ['.txt', '.md', '.js', '.jsx', '.ts', '.tsx', '.json', '.css', 
+                             '.html', '.xml', '.csv', '.yml', '.yaml', '.py', '.java', '.c', 
+                             '.cpp', '.cs', '.php', '.rb', '.go', '.rs', '.sql'];
+      
+      const fileExtension = `.${currentFile.name.split('.').pop()?.toLowerCase()}`;
+      
+      // Vérifier si c'est un fichier texte
+      const isTextFile = currentFile.type.includes('text') || textExtensions.includes(fileExtension);
+      
+      // Nouveau: Vérifier si c'est une image ou vidéo
+      const isImage = isImageFile(currentFile);
+      const isVideo = isVideoFile(currentFile);
+      
+      if (isTextFile) {
+        try {
+          // Lire le contenu du fichier texte
+          const fileContent = await currentFile.text();
+          
+          // Mettre à jour la propriété content dans attachedFile
+          if (userMessage.attachedFile) {
+            userMessage.attachedFile.content = fileContent;
+          }
+          
+          // Ajouter un message système avec le contenu du fichier
+          messagesForAPI.push({
+            role: 'system',
+            content: `Fichier: ${currentFile.name}\n\nContenu:\n${fileContent}\n\nVeuillez analyser ce fichier en fonction de la demande de l&apos;utilisateur.`
+          });
+        } catch (error) {
+          console.error('Erreur lors de la lecture du fichier:', error);
+        }
+      } 
+      // Nouveau: Traitement des images
+      else if (isImage || isVideo) {
+        try {
+          if (isImage) {
+            // Pour les images, créer à la fois la description et récupérer le base64
+            const imageContent = await createImageContentWithBase64(currentFile);
+            
+            // Mettre à jour la propriété content dans attachedFile pour les métadonnées
+            if (userMessage.attachedFile) {
+              userMessage.attachedFile.content = imageContent.description;
+            }
+            
+            // Créer un message système formaté en JSON stringifié pour supporter la vision
+            messagesForAPI.push({
+              role: 'system',
+              content: `L&apos;utilisateur a joint une image: ${currentFile.name}\n\nDescription: ${imageContent.description}\n\nImage base64: ${imageContent.base64.substring(0, 50)}...\n\nVeuillez analyser cette image et répondre aux questions de l&apos;utilisateur.`
+            });
+          } else {
+            // Pour les vidéos, utiliser seulement les métadonnées pour l'instant
+            const mediaDescription = await createMediaDescription(currentFile);
+            
+            // Mettre à jour la propriété content dans attachedFile pour les métadonnées
+            if (userMessage.attachedFile) {
+              userMessage.attachedFile.content = mediaDescription;
+            }
+            
+            // Ajouter un message système avec la description de la vidéo
+            messagesForAPI.push({
+              role: 'system',
+              content: `Vidéo jointe: ${currentFile.name}\n\n${mediaDescription}\n\nVeuillez analyser ces métadonnées de la vidéo en fonction de la demande de l&apos;utilisateur.`
+            });
+          }
+        } catch (error) {
+          console.error('Erreur lors du traitement du fichier multimédia:', error);
+          
+          // En cas d'erreur, ajouter un message système d'erreur
+          messagesForAPI.push({
+            role: 'system',
+            content: `Une erreur s'est produite lors du traitement du fichier multimédia: ${currentFile.name}. Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
+          });
+        }
+      }
+      else {
+        // Pour les autres types de fichiers, ajouter une instruction
+        messagesForAPI.push({
+          role: 'system',
+          content: `L&apos;utilisateur a joint un fichier: ${currentFile.name} (${currentFile.type || 'type inconnu'}). Type: ${isImage ? 'Image' : isVideo ? 'Vidéo' : 'Fichier non pris en charge'}. Taille: ${(currentFile.size / 1024).toFixed(2)} KB.`
+        });
+      }
+    }
+    
+    console.log('Envoi au modèle:', modelObject.name, 'mode:', mode, 'avec fichier:', currentFile?.name);
+    
+    // Create a new AbortController for this request
+    abortController = new AbortController();
+    
+    // Récupérer les clés API depuis le localStorage
+    const openRouterKey = localStorage.getItem('tetika-openrouter-key') || '';
+    const notdiamondKey = localStorage.getItem('tetika-notdiamond-key') || '';
+    const serpapiKey = localStorage.getItem('tetika-serpapi-key') || '';
+    
+    // Préparer les données à envoyer
+    const requestBody = {
+      messages: messagesForAPI,
+      model: modelObject,
+      mode: mode,
+      hasAttachedFile: !!currentFile,
+      apiKeys: {
+        openrouter: openRouterKey,
+        notdiamond: notdiamondKey,
+        serpapi: serpapiKey
+      }
+    };
+    
+    // Log des données envoyées pour le débogage (sans les clés API complètes)
+    console.log('Données de requête:', {
+      ...requestBody,
+      apiKeys: {
+        openrouter: openRouterKey ? `${openRouterKey.substring(0, 8)}...` : 'non défini',
+        notdiamond: notdiamondKey ? `${notdiamondKey.substring(0, 8)}...` : 'non défini',
+        serpapi: serpapiKey ? `${serpapiKey.substring(0, 8)}...` : 'non défini'
+      }
+    });
+    
+    let data;
+    
+    try {
+      const requestBodyJSON = JSON.stringify(requestBody);
+      
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: abortController.signal,
+        body: requestBodyJSON,
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = 'Échec de la génération de réponse';
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          console.error('Erreur lors du parsing de la réponse d\'erreur:', parseError);
+          errorMessage = `${errorMessage}: ${errorText.substring(0, 100)}...`;
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Erreur lors du parsing de la réponse:', parseError);
+        throw new Error('Erreur lors de la lecture de la réponse du serveur');
+      }
+      
+      // Déterminer le mode réel en fonction de si le RAG a été activé automatiquement
+      const responseMode = data.autoActivatedRAG ? 'rag' : mode;
+      // Si le RAG a été activé automatiquement, mettre à jour l'état
+      if (data.autoActivatedRAG) {
+        setRagMode(true);
+      }
+      
+      // Créer le message de réponse
+      const assistantMessage: Message = {
+        id: generateId(),
+        role: 'assistant',
+        content: data.message,
+        timestamp: Date.now(),
+        sources: data.sources ? data.sources.map((source: { 
+          title: string; 
+          url: string; 
+          snippet: string; 
+          position?: number 
+        }) => ({
+          title: source.title,
+          link: source.url, // Map url to link for compatibility with SourceType
+          url: source.url,  // Keep url for backward compatibility
+          snippet: source.snippet,
+          position: source.position
+        })) : [],
+        mode: responseMode, // Utiliser le mode réel de la réponse
+        autoActivatedRAG: data.autoActivatedRAG // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
+      };
+      
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (err) {
+      // Utilisons une approche plus robuste pour détecter les annulations
+      // Vérifier si c'est une erreur d'annulation avant de la logger
+      const isUserCancellation = 
+        (err instanceof DOMException && err.name === 'AbortError') || 
+        (err instanceof Error && (
+          err.name === 'AbortError' || 
+          err.message.includes('annulée') ||
+          err.message.includes('canceled') ||
+          err.message.includes('cancelled') ||
+          err.message === 'Demande annulée par l\'utilisateur'
+        ));
+      
+      if (isUserCancellation) {
+        // Annulation volontaire, pas d'erreur à afficher
+        console.log('✓ Génération arrêtée par l\'utilisateur'); // Log informatif uniquement
+        return; // Sortir sans afficher de message d'erreur
+      }
+      
+      // Seulement pour les vraies erreurs, afficher dans la console
+      console.error('Erreur lors de l\'obtention de la réponse IA:', err);
+      
+      // Log détaillé pour aider au débogage
+      if (err instanceof Error) {
+        console.log('Détails de l\'erreur:', {
+          name: err.name,
+          message: err.message,
+          stack: err.stack?.substring(0, 500)
+        });
+      }
+      
+      // Message d'erreur plus spécifique pour les problèmes de JSON
+      let errorContent = `Désolé, une erreur s'est produite: ${err instanceof Error ? err.message : 'Erreur inconnue'}. Veuillez réessayer.`;
+      
+      // Détecter les erreurs de JSON spécifiques
+      if (err instanceof Error && 
+          (err.message.includes('JSON') || 
+           err.message.includes('Unexpected end of') || 
+           err.message.includes('Unexpected token'))) {
+        errorContent = `Erreur de format de données: ${err.message}. Veuillez vérifier que votre message ne contient pas de caractères spéciaux qui pourraient poser problème.`;
+      }
+      
+      // Ajouter un message d'erreur uniquement pour les vraies erreurs
+      const errorMessage: Message = {
+        id: generateId(),
+        role: 'assistant',
+        content: errorContent,
+        timestamp: Date.now(),
+        mode: mode,
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  } catch (outerError) {
+    // Gestion des erreurs dans le bloc externe (hors API)
+    console.error('Erreur externe:', outerError);
+    
+    // Ajouter un message d'erreur
+    const errorMessage: Message = {
+      id: generateId(),
+      role: 'assistant',
+      content: `Erreur: ${outerError instanceof Error ? outerError.message : 'Erreur inconnue'}`,
+      timestamp: Date.now(),
+      mode: mode,
+    };
+    setMessages(prev => [...prev, errorMessage]);
+  } finally {
+    setLoading(false);
+    abortController = null;
+  }
+};

@@ -347,7 +347,6 @@ const ChatInterface: React.FC = () => {
               }
               
               // Créer un message système formaté en JSON stringifié pour supporter la vision
-              // Cela sera converti côté API en format approprié
               messagesForAPI.push({
                 role: 'system',
                 content: `L&apos;utilisateur a joint une image: ${currentFile.name}\n\nDescription: ${imageContent.description}\n\nImage base64: ${imageContent.base64.substring(0, 50)}...\n\nVeuillez analyser cette image et répondre aux questions de l&apos;utilisateur.`
@@ -385,100 +384,167 @@ const ChatInterface: React.FC = () => {
           });
         }
       }
-        console.log('Envoi au modèle:', modelObject.name, 'mode:', mode, 'avec fichier:', currentFile?.name);
+      
+      console.log('Envoi au modèle:', modelObject.name, 'mode:', mode, 'avec fichier:', currentFile?.name);
       
       // Create a new AbortController for this request
       abortController = new AbortController();
       
-      // Appel API pour obtenir la réponse      // Récupérer les clés API depuis le localStorage
+      // Récupérer les clés API depuis le localStorage
       const openRouterKey = localStorage.getItem('tetika-openrouter-key') || '';
       const notdiamondKey = localStorage.getItem('tetika-notdiamond-key') || '';
       const serpapiKey = localStorage.getItem('tetika-serpapi-key') || '';
       
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          messages: messagesForAPI,
-          model: modelObject,
-          mode: mode,
-          hasAttachedFile: !!currentFile,
-          apiKeys: {
-            openrouter: openRouterKey,
-            notdiamond: notdiamondKey,
-            serpapi: serpapiKey
-          }
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Échec de la génération de réponse');
-      }
-      
-      const data = await response.json();
-      
-      // Déterminer le mode réel en fonction de si le RAG a été activé automatiquement
-      const responseMode = data.autoActivatedRAG ? 'rag' : mode;
-      // Si le RAG a été activé automatiquement, mettre à jour l'état
-      if (data.autoActivatedRAG) {
-        setRagMode(true);
-      }
-      
-      // Créer le message de réponse
-      const assistantMessage: Message = {
-        id: generateId(),
-        role: 'assistant',
-        content: data.message,
-        timestamp: Date.now(),
-        sources: data.sources ? data.sources.map((source: { 
-          title: string; 
-          url: string; 
-          snippet: string; 
-          position?: number 
-        }) => ({
-          title: source.title,
-          link: source.url, // Map url to link for compatibility with SourceType
-          url: source.url,  // Keep url for backward compatibility
-          snippet: source.snippet,
-          position: source.position
-        })) : [],
-        mode: responseMode, // Utiliser le mode réel de la réponse
-        autoActivatedRAG: data.autoActivatedRAG // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
+      // Préparer les données à envoyer
+      const requestBody = {
+        messages: messagesForAPI,
+        model: modelObject,
+        mode: mode,
+        hasAttachedFile: !!currentFile,
+        apiKeys: {
+          openrouter: openRouterKey,
+          notdiamond: notdiamondKey,
+          serpapi: serpapiKey
+        }
       };
       
-      setMessages(prev => [...prev, assistantMessage]);
-      // Gestion des suggestions RAG supprimée
-    } catch (err) {
-      // Utilisons une approche plus robuste pour détecter les annulations
-      // Vérifier si c'est une erreur d'annulation avant de la logger
-      const isUserCancellation = 
-        (err instanceof DOMException && err.name === 'AbortError') || 
-        (err instanceof Error && (
-          err.name === 'AbortError' || 
-          err.message.includes('annulée') ||
-          err.message.includes('canceled') ||
-          err.message.includes('cancelled') ||
-          err.message === 'Demande annulée par l\'utilisateur'
-        ));
+      // Log des données envoyées pour le débogage (sans les clés API complètes)
+      console.log('Données de requête:', {
+        ...requestBody,
+        apiKeys: {
+          openrouter: openRouterKey ? `${openRouterKey.substring(0, 8)}...` : 'non défini',
+          notdiamond: notdiamondKey ? `${notdiamondKey.substring(0, 8)}...` : 'non défini',
+          serpapi: serpapiKey ? `${serpapiKey.substring(0, 8)}...` : 'non défini'
+        }
+      });
       
-      if (isUserCancellation) {
-        // Annulation volontaire, pas d'erreur à afficher
-        console.log('✓ Génération arrêtée par l\'utilisateur'); // Log informatif uniquement
-        return; // Sortir sans afficher de message d'erreur
+      let data;
+      
+      try {
+        const requestBodyJSON = JSON.stringify(requestBody);
+        
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: abortController.signal,
+          body: requestBodyJSON,
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage = 'Échec de la génération de réponse';
+          
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.error || errorMessage;
+          } catch (parseError) {
+            console.error('Erreur lors du parsing de la réponse d\'erreur:', parseError);
+            errorMessage = `${errorMessage}: ${errorText.substring(0, 100)}...`;
+          }
+          
+          throw new Error(errorMessage);
+        }
+        
+        try {
+          data = await response.json();
+        } catch (parseError) {
+          console.error('Erreur lors du parsing de la réponse:', parseError);
+          throw new Error('Erreur lors de la lecture de la réponse du serveur');
+        }
+        
+        // Déterminer le mode réel en fonction de si le RAG a été activé automatiquement
+        const responseMode = data.autoActivatedRAG ? 'rag' : mode;
+        // Si le RAG a été activé automatiquement, mettre à jour l'état
+        if (data.autoActivatedRAG) {
+          setRagMode(true);
+        }
+        
+        // Créer le message de réponse
+        const assistantMessage: Message = {
+          id: generateId(),
+          role: 'assistant',
+          content: data.message,
+          timestamp: Date.now(),
+          sources: data.sources ? data.sources.map((source: { 
+            title: string; 
+            url: string; 
+            snippet: string; 
+            position?: number 
+          }) => ({
+            title: source.title,
+            link: source.url, // Map url to link for compatibility with SourceType
+            url: source.url,  // Keep url for backward compatibility
+            snippet: source.snippet,
+            position: source.position
+          })) : [],
+          mode: responseMode, // Utiliser le mode réel de la réponse
+          autoActivatedRAG: data.autoActivatedRAG // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
+        };
+        
+        setMessages(prev => [...prev, assistantMessage]);
+      } catch (err) {
+        // Utilisons une approche plus robuste pour détecter les annulations
+        // Vérifier si c'est une erreur d'annulation avant de la logger
+        const isUserCancellation = 
+          (err instanceof DOMException && err.name === 'AbortError') || 
+          (err instanceof Error && (
+            err.name === 'AbortError' || 
+            err.message.includes('annulée') ||
+            err.message.includes('canceled') ||
+            err.message.includes('cancelled') ||
+            err.message === 'Demande annulée par l\'utilisateur'
+          ));
+        
+        if (isUserCancellation) {
+          // Annulation volontaire, pas d'erreur à afficher
+          console.log('✓ Génération arrêtée par l\'utilisateur'); // Log informatif uniquement
+          return; // Sortir sans afficher de message d'erreur
+        }
+        
+        // Seulement pour les vraies erreurs, afficher dans la console
+        console.error('Erreur lors de l\'obtention de la réponse IA:', err);
+        
+        // Log détaillé pour aider au débogage
+        if (err instanceof Error) {
+          console.log('Détails de l\'erreur:', {
+            name: err.name,
+            message: err.message,
+            stack: err.stack?.substring(0, 500)
+          });
+        }
+        
+        // Message d'erreur plus spécifique pour les problèmes de JSON
+        let errorContent = `Désolé, une erreur s'est produite: ${err instanceof Error ? err.message : 'Erreur inconnue'}. Veuillez réessayer.`;
+        
+        // Détecter les erreurs de JSON spécifiques
+        if (err instanceof Error && 
+            (err.message.includes('JSON') || 
+             err.message.includes('Unexpected end of') || 
+             err.message.includes('Unexpected token'))) {
+          errorContent = `Erreur de format de données: ${err.message}. Veuillez vérifier que votre message ne contient pas de caractères spéciaux qui pourraient poser problème.`;
+        }
+        
+        // Ajouter un message d'erreur uniquement pour les vraies erreurs
+        const errorMessage: Message = {
+          id: generateId(),
+          role: 'assistant',
+          content: errorContent,
+          timestamp: Date.now(),
+          mode: mode,
+        };
+        setMessages(prev => [...prev, errorMessage]);
       }
+    } catch (outerError) {
+      // Gestion des erreurs dans le bloc externe (hors API)
+      console.error('Erreur externe:', outerError);
       
-      // Seulement pour les vraies erreurs, afficher dans la console
-      console.error('Erreur lors de l\'obtention de la réponse IA:', err);
-      
-      // Ajouter un message d'erreur uniquement pour les vraies erreurs
+      // Ajouter un message d'erreur
       const errorMessage: Message = {
         id: generateId(),
         role: 'assistant',
-        content: `Désolé, une erreur s'est produite: ${err instanceof Error ? err.message : 'Erreur inconnue'}. Veuillez réessayer.`,
+        content: `Erreur: ${outerError instanceof Error ? outerError.message : 'Erreur inconnue'}`,
         timestamp: Date.now(),
         mode: mode,
       };
