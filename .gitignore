@@ -20,6 +20,11 @@
 .env.local
 .env.development.local
 
+# temporary files
+temp-*.ts
+temp-*.js
+temp-*.tsx
+
 # production
 /build
 

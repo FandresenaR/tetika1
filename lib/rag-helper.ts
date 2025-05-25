@@ -1,4 +1,6 @@
-import { searchWithSerpApi } from './search-utils';
+// Import server-direct and client-proxy search functions
+import { searchWithSerpAPI } from './api';
+import { callSerpApiDirectly } from './search-utils';
 
 // Define interfaces for search results
 interface SearchResult {
@@ -44,8 +46,20 @@ export async function enhanceWithRAG(query: string, apiKey: string): Promise<RAG
   console.log('Enriching message with RAG using SerpAPI');
   
   try {
-    // Use the searchWithSerpApi utility
-    const searchResults: SearchResponse = await searchWithSerpApi(query, apiKey);
+    // Determine if we're running on server or client side
+    const isServer = typeof window === 'undefined';
+    
+    // Use the appropriate search function based on environment
+    let searchResults: SearchResponse;
+    if (isServer) {
+      // Server-side: Use direct SerpAPI call to avoid self-reference
+      console.log('Server-side RAG: Using direct SerpAPI call');
+      searchResults = await callSerpApiDirectly(query, apiKey);
+    } else {
+      // Client-side: Use the proxy endpoint
+      console.log('Client-side RAG: Using proxy endpoint');
+      searchResults = await searchWithSerpAPI(query, apiKey);
+    }
     
     if (searchResults.organic_results && searchResults.organic_results.length > 0) {
       console.log(`Found ${searchResults.organic_results.length} results from web search`);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
+import { cleanApiKey } from '../../../lib/api';
 
 export const dynamic = 'force-dynamic'; // Ne pas mettre en cache cette route
 
@@ -20,12 +21,27 @@ interface SerpApiError extends Error {
 
 // Helper function to make SerpAPI request
 async function performSerpApiSearch(query: string, apiKey: string) {
+  if (!query || !apiKey) {
+    throw new Error('Query and API key are required for SerpAPI search');
+  }
+  
   console.log(`[API] Proxy SerpAPI - Actual search query: "${query.substring(0, 30)}..."`);
+  
+  // Clean the API key with our centralized cleanApiKey function
+  const cleanedApiKey = cleanApiKey(apiKey, 'serpapi');
+  
+  if (!cleanedApiKey) {
+    throw new Error('Failed to clean or extract a valid SerpAPI key');
+  }
+  
+  // Log the first 5 characters of the cleaned API key being used (safe to log)
+  console.log(`[API] Proxy SerpAPI - Using API key: ${cleanedApiKey.substring(0, 5)}...`);
+  console.log(`[API] Proxy SerpAPI - API key length: ${cleanedApiKey.length}, is valid format: ${/^[0-9a-f]{64}$/i.test(cleanedApiKey)}`);
   
   // Paramètres pour SerpAPI
   const serpApiParams = {
     q: query,
-    api_key: apiKey,
+    api_key: cleanedApiKey, // Use the cleaned key
     engine: 'google',
     gl: 'fr',  // Localisation pour des résultats plus pertinents
     hl: 'fr',  // Langue des résultats
@@ -123,8 +139,7 @@ function handleSerpApiError(error: SerpApiError, query: string) {
 export async function POST(request: NextRequest) {
   let query = 'unknown query';
   
-  try {
-    // Extract data from the request body
+  try {    // Extract data from the request body
     const data = await request.json();
     query = data.query || query;
     const apiKey = data.apiKey;
@@ -137,7 +152,13 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Make the SerpAPI request
+    // Log initial key info but don't clean here - we'll let performSerpApiSearch handle cleaning
+    console.log(`[API] Proxy SerpAPI - Received API key with length: ${apiKey.length}`);
+    if (apiKey.length > 100) {
+      console.log(`[API] Proxy SerpAPI - Warning: API key is unusually long (${apiKey.length} chars)`);
+    }
+    
+    // Make the SerpAPI request with the original key - cleaning happens inside performSerpApiSearch
     const responseData = await performSerpApiSearch(query, apiKey);
     
     // Return the results
@@ -151,7 +172,14 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   let query = '';
   try {
-    // Extract query from URL params
+    // Extract query from URL params with proper error handling
+    if (!request.nextUrl) {
+      return NextResponse.json(
+        { error: 'Failed to parse URL. Invalid request structure.' },
+        { status: 400 }
+      );
+    }
+    
     const searchParams = request.nextUrl.searchParams;
     query = searchParams.get('q') || '';
     const apiKey = searchParams.get('apiKey');
@@ -163,7 +191,10 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    // Make the SerpAPI request
+    // Log minimal information about the received key
+    console.log(`[API] Proxy SerpAPI - GET request received with key length: ${apiKey.length}`);
+    
+    // Make the SerpAPI request - cleaning happens inside performSerpApiSearch
     const responseData = await performSerpApiSearch(query, apiKey);
     
     // Return the results
