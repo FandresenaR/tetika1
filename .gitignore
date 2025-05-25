@@ -51,3 +51,8 @@ debug-scraping-api.js
 diagnose-server.js
 quick-test.js
 TROUBLESHOOTING_GUIDE.md
+api-test.html
+start-server.ps1
+test-server-status.js
+.gitignore
+test-api-simple.js
