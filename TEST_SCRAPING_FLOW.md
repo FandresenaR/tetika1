@@ -16,7 +16,8 @@ The scraping functionality has been improved with a two-step process:
 
 ### 2. Expected Behavior After URL Entry
 - ✅ Context menu closes
-- ✅ Orange "Scraping Mode Active" indicator appears
+- ✅ Orange "Scraping Mode Active" indicator appears with "RAG AUTO-ON" badge
+- ✅ RAG mode automatically activates (toggle switches to RAG)
 - ✅ Input placeholder changes to: "Enter instructions for scraping: [URL]"
 - ✅ Send button turns orange
 - ✅ No immediate scraping execution
@@ -38,6 +39,7 @@ The scraping functionality has been improved with a two-step process:
 ### 5. Cancel Scraping Mode
 - Click the X button in the orange indicator
 - ✅ Scraping mode deactivates
+- ✅ RAG mode reverts to previous state (before scraping was activated)
 - ✅ Input returns to normal state
 
 ## Test URLs
@@ -53,6 +55,20 @@ The enhanced scraper should detect:
 - Descriptions
 - Tags/categories
 - Contact information
+
+## New Features
+
+### 🤖 Automatic RAG Mode Activation
+When entering scraping mode, RAG mode is automatically activated because:
+- Scraped data benefits from RAG processing for better analysis
+- RAG mode provides enhanced contextual understanding of scraped content
+- Automatic activation improves workflow efficiency
+- Previous RAG state is preserved and restored when canceling scraping
+
+### Visual Indicators
+- **"RAG AUTO-ON"** badge appears in the scraping mode indicator
+- RAG toggle automatically switches to ON when scraping starts
+- Orange scraping indicator shows both scraping URL and RAG status
 
 ## API Changes
 - Added `prompt` parameter to scraping API

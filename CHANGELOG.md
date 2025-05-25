@@ -24,6 +24,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `ChatInterface.tsx` - Mise à jour de handleScrapWebsite pour accepter URL + prompt
 - `route.ts` (/api/scrape) - Support du paramètre prompt pour l'extraction intelligente
 
+#### 🤖 **Activation automatique du mode RAG:**
+- **RAG auto-activé** lors de l'entrée en mode scraping
+- **Notification temporaire** informant de l'activation automatique
+- **Restauration intelligente** de l'état RAG précédent lors de l'annulation
+- **Badge "RAG AUTO-ON"** dans l'indicateur de mode scraping
+- **Amélioration du workflow** pour l'analyse de données scrapées
+
 #### 🎨 **Améliorations UX:**
 - **Indicateur visuel orange** quand le mode scraping est actif
 - **Placeholder dynamique** indiquant l'URL en cours de scraping

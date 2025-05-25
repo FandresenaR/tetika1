@@ -32,8 +32,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
 }) => {
   const [message, setMessage] = useState('');  const textareaRef = useRef<HTMLTextAreaElement>(null);  const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
-  const [cursorPosition, setCursorPosition] = useState(0);
-  const [scrapingUrl, setScrapingUrl] = useState<string | null>(null);  const handleSendMessage = useCallback(() => {
+  const [cursorPosition, setCursorPosition] = useState(0);  const [scrapingUrl, setScrapingUrl] = useState<string | null>(null);
+  const [previousRagMode, setPreviousRagMode] = useState<boolean>(false);
+  const [showRagNotification, setShowRagNotification] = useState<boolean>(false);const handleSendMessage = useCallback(() => {
     if (message.trim()) {
       // If we have a scraping URL waiting, execute scraping with the message as prompt
       if (scrapingUrl) {
@@ -68,28 +69,42 @@ const ChatInput: React.FC<ChatInputProps> = ({
     } else {
       setContextMenuVisible(false);
     }
-  }, []);
-  // Handle context menu scrap mode selection
+  }, []);  // Handle context menu scrap mode selection
   const handleScrapModeSelect = useCallback(async (url: string) => {
     setContextMenuVisible(false);
     
     // Set the scraping URL and update the message to prompt for instructions
     setScrapingUrl(url);
     
+    // Store the current RAG mode state before changing it
+    setPreviousRagMode(ragMode);
+      // Automatically activate RAG mode when entering scraping mode
+    onRagModeChange(true);
+    
+    // Show notification about RAG auto-activation
+    if (!ragMode) {
+      setShowRagNotification(true);
+      setTimeout(() => setShowRagNotification(false), 3000); // Hide after 3 seconds
+    }
+    
     // Remove the "@" from the message and add a scraping indicator
     const beforeAt = message.slice(0, cursorPosition - 1);
     const afterAt = message.slice(cursorPosition);
-    setMessage(`${beforeAt}${afterAt}`);
-    
-    // Update the placeholder to indicate we're waiting for scraping instructions
+    setMessage(`${beforeAt}${afterAt}`);    // Update the placeholder to indicate we're waiting for scraping instructions
     if (textareaRef.current) {
       textareaRef.current.placeholder = `Enter instructions for scraping: ${url}`;
     }
-  }, [message, cursorPosition]);
-
+  }, [message, cursorPosition, onRagModeChange, ragMode]);
   const handleContextMenuClose = useCallback(() => {
     setContextMenuVisible(false);
   }, []);
+
+  // Handle canceling scraping mode
+  const handleCancelScraping = useCallback(() => {
+    setScrapingUrl(null);
+    // Restore previous RAG mode state when canceling scraping
+    onRagModeChange(previousRagMode);
+  }, [previousRagMode, onRagModeChange]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -177,9 +192,30 @@ const ChatInput: React.FC<ChatInputProps> = ({
               <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping opacity-60"></span>
               <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-400"></span>
             </>
-          )}
-        </div>
+          )}        </div>
       </div>
+
+      {/* RAG Auto-activation notification */}
+      {showRagNotification && (
+        <div className={`flex items-center gap-2 p-2 mb-2 rounded-lg backdrop-blur-sm border-l-4 animate-pulse
+          ${theme === 'dark'
+            ? 'bg-blue-900/20 border-blue-500 text-blue-300'
+            : 'bg-blue-50/90 border-blue-400 text-blue-700'}`}
+        >
+          <div className={`p-1 rounded ${
+            theme === 'dark' ? 'bg-blue-800/40' : 'bg-blue-100'
+          }`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <p className={`text-sm font-medium ${theme === 'dark' ? 'text-blue-300' : 'text-blue-700'}`}>
+              RAG mode automatically activated for scraping
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Scraping mode indicator */}
       {scrapingUrl && (
@@ -196,18 +232,21 @@ const ChatInput: React.FC<ChatInputProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9l7 7" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9l-7 7" />
             </svg>
-          </div>
-          <div className="flex-1 min-w-0">
+          </div>          <div className="flex-1 min-w-0">
             <p className={`text-sm font-medium ${theme === 'dark' ? 'text-orange-300' : 'text-orange-700'}`}>
-              Scraping Mode Active
+              Scraping Mode Active 
+              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+                theme === 'dark' ? 'bg-blue-700/40 text-blue-300' : 'bg-blue-100 text-blue-700'
+              }`}>
+                RAG AUTO-ON
+              </span>
             </p>
             <p className={`text-xs truncate ${theme === 'dark' ? 'text-orange-400' : 'text-orange-600'}`}>
               URL: {scrapingUrl}
             </p>
-          </div>
-          <button
+          </div>          <button
             type="button"
-            onClick={() => setScrapingUrl(null)}
+            onClick={handleCancelScraping}
             className={`p-1 rounded-full transition-all
               ${theme === 'dark'
                 ? 'text-orange-400 hover:text-orange-200 hover:bg-orange-800/70'
