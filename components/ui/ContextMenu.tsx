@@ -17,7 +17,6 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
 }) => {
   const [urlInput, setUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<'content' | 'links' | 'images' | 'all'>('all');
   const menuRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -59,7 +58,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       if (showUrlInput) {
         setShowUrlInput(false);

@@ -61,17 +61,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
       setContextMenuVisible(false);
     }
   }, []);
+
   // Handle context menu scrap mode selection
-  const handleScrapModeSelect = useCallback(async (url: string, mode: 'content' | 'links' | 'images' | 'all' = 'all') => {
+  const handleScrapModeSelect = useCallback(async (url: string) => {
     if (onScrapWebsite) {
-      onScrapWebsite(url, mode);
+      onScrapWebsite(url);
     }
     setContextMenuVisible(false);
     
     // Remove the "@" from the message and add a scraping indicator
     const beforeAt = message.slice(0, cursorPosition - 1);
     const afterAt = message.slice(cursorPosition);
-    setMessage(`${beforeAt}[Scraping ${mode}: ${url}]${afterAt}`);
+    setMessage(`${beforeAt}[Scraping: ${url}]${afterAt}`);
   }, [message, cursorPosition, onScrapWebsite]);
 
   const handleContextMenuClose = useCallback(() => {

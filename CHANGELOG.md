@@ -9,7 +9,26 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Ajouté
 
--Code Block Updated in RAG Mode:
+✅ Web Scraping Integration Complete!
+
+📁 Files Updated:
+- ChatInterface.tsx - Added handleScrapWebsite and handleExportCSV functions
+- ScrapedDataTable.tsx - Cleaned up unused code and fixed prop interface
+- ContextMenu.tsx - Fixed TypeScript event type
+- All compilation errors resolved
+
+🎯 How to Use:
+-Type "@" in the chat input field
+-Context menu appears with scraping option
+-Enter a website URL (e.g., https://example.com)
+-Select scraping mode (content/links/images/metadata)
+-View results in the modal table
+-Export data as CSV using the export buttons
+🔄 Workflow:
+**Input → Context Menu → URL Entry → API Call → Data Display → CSV Export**
+
+
+-**Code Block Updated in RAG Mode**:
 
 ## 📋 **Summary**
 

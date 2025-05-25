@@ -672,16 +672,154 @@ const ChatInterface: React.FC = () => {
       setShowSidebar(!showSidebar);
     }
   };
-
   const handleStartNewConversation = (mode: ChatMode) => {
     handleClearChat();    // Force le démarrage d'une nouvelle conversation avec le mode sélectionné
     // La chaîne vide comme premier message ne sera pas affichée à l'utilisateur
     // mais permettra d'initialiser le mode
     setRagMode(mode === 'rag');
-    handleSendMessage("Bonjour TETIKA, peux-tu m&apos;aider ?", mode);
+    handleSendMessage("Bonjour TETIKA, peux-tu m&apos;aider ?", mode);  };
+  // Function to handle web scraping
+  const handleScrapWebsite = async (url: string, mode?: 'content' | 'links' | 'images' | 'all') => {
+    try {
+      setLoading(true);
+      
+      // Convert 'all' to 'metadata' for the API call
+      const apiMode = mode === 'all' ? 'metadata' : (mode || 'content');
+      
+      const response = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url, mode: apiMode }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Set the scraped data and show the modal
+      setScrapedData(data);
+      setShowScrapedDataTable(true);
+
+      // Add a success message to the chat
+      const successMessage: Message = {
+        id: generateId(),
+        role: 'system',
+        content: `✅ Site web scrapé avec succès: ${url}\n\nDonnées extraites:\n- Titre: ${data.title}\n- Contenu: ${data.content ? 'Disponible' : 'Non disponible'}\n- Liens: ${data.links?.length || 0} trouvés\n- Images: ${data.images?.length || 0} trouvées\n- Métadonnées: ${data.metadata ? 'Disponibles' : 'Non disponibles'}`,
+        timestamp: Date.now()
+      };
+      
+      setMessages(prev => [...prev, successMessage]);
+      
+    } catch (error) {
+      console.error('Erreur lors du scraping:', error);
+      
+      // Add an error message to the chat
+      const errorMessage: Message = {
+        id: generateId(),
+        role: 'system',
+        content: `❌ Erreur lors du scraping du site: ${url}\n\nErreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        timestamp: Date.now()
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const themeClasses = theme === 'dark' 
+  // Function to handle CSV export
+  const handleExportCSV = (data: ScrapedDataItem, type: 'content' | 'links' | 'images' | 'metadata') => {
+    try {
+      let csvContent = '';
+      let filename = '';
+
+      switch (type) {
+        case 'content':
+          csvContent = 'Type,Content\n';
+          csvContent += `"Title","${data.title.replace(/"/g, '""')}"\n`;
+          csvContent += `"URL","${data.url}"\n`;
+          csvContent += `"Content","${data.content.replace(/"/g, '""')}"\n`;
+          if (data.scrapedAt) {
+            csvContent += `"Scraped At","${data.scrapedAt}"\n`;
+          }
+          filename = `content_${new Date().toISOString().split('T')[0]}.csv`;
+          break;
+
+        case 'links':
+          csvContent = 'Text,URL,Href\n';
+          data.links?.forEach(link => {
+            csvContent += `"${link.text.replace(/"/g, '""')}","${link.url}","${link.href}"\n`;
+          });
+          filename = `links_${new Date().toISOString().split('T')[0]}.csv`;
+          break;
+
+        case 'images':
+          csvContent = 'Source,Alt Text\n';
+          data.images?.forEach(image => {
+            csvContent += `"${image.src}","${image.alt.replace(/"/g, '""')}"\n`;
+          });
+          filename = `images_${new Date().toISOString().split('T')[0]}.csv`;
+          break;
+
+        case 'metadata':
+          csvContent = 'Property,Value\n';
+          if (data.metadata) {
+            Object.entries(data.metadata).forEach(([key, value]) => {
+              if (value) {
+                csvContent += `"${key}","${value.replace(/"/g, '""')}"\n`;
+              }
+            });
+          }
+          filename = `metadata_${new Date().toISOString().split('T')[0]}.csv`;
+          break;
+      }
+
+      // Create and download the CSV file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }      // Add a success message to the chat
+      const successMessage: Message = {
+        id: generateId(),
+        role: 'system',
+        content: `📊 Export CSV réussi: ${filename}`,
+        timestamp: Date.now()
+      };
+      
+      setMessages(prev => [...prev, successMessage]);
+
+    } catch (error) {
+      console.error('Erreur lors de l\'export CSV:', error);
+      
+      // Add an error message to the chat
+      const errorMessage: Message = {
+        id: generateId(),
+        role: 'system',
+        content: `❌ Erreur lors de l'export CSV: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        timestamp: Date.now()
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  };
+
+  const themeClasses = theme === 'dark'
     ? 'bg-gray-900 text-white' 
     : 'bg-gray-100 text-gray-800';
   
@@ -835,19 +973,12 @@ const ChatInterface: React.FC = () => {
             className={`relative flex flex-col flex-grow h-full overflow-hidden transition-all duration-300 ease-in-out
               ${showCodeSidebar ? 'md:max-w-[calc(100%-55%)] lg:max-w-[calc(100%-45%)] xl:max-w-[calc(100%-38%)]' : 'w-full'}`}
           >          
-            {/* Chat messages container */}
-            <div 
+            {/* Chat messages container */}            <div 
               ref={chatContainerRef}
               className={`flex-grow overflow-y-auto py-4 pb-14 sm:pb-16 md:pb-10 px-3 sm:px-6 transition-all duration-300
                 ${theme === 'dark' 
-                  ? 'bg-gradient-to-b from-gray-950 to-gray-900 bg-mesh-pattern' 
-                  : 'bg-gradient-to-b from-gray-50 to-white bg-mesh-pattern-light'}`}
-              style={{
-                backgroundImage: theme === 'dark' 
-                  ? 'radial-gradient(circle at 1px 1px, rgba(44, 82, 130, 0.1) 1px, transparent 0)'
-                  : 'radial-gradient(circle at 1px 1px, rgba(37, 99, 235, 0.05) 1px, transparent 0)',
-                backgroundSize: '40px 40px'
-              }}
+                  ? 'bg-gradient-to-b from-gray-950 to-gray-900' 
+                  : 'bg-gradient-to-b from-gray-50 to-white'}`}
             >
               <div className="max-w-4xl mx-auto">
                 {messages.length === 0 ? (
@@ -1092,12 +1223,9 @@ const ChatInterface: React.FC = () => {
               onClose={() => setShowCodeSidebar(false)}
             />
           )}
-        </div>
-
-        {/* Model Selector Modal */}
+        </div>        {/* Model Selector Modal */}
         {isModelSelectorOpen && (
-          <div className="fixed inset-0 flex items-center justify-center backdrop-blur-sm z-50 p-4"
-              style={{backgroundColor: 'rgba(0,0,0,0.6)'}}>
+          <div className="fixed inset-0 flex items-center justify-center backdrop-blur-sm z-50 p-4 bg-black bg-opacity-60">
             <div className={`relative max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-xl shadow-2xl transform transition-all duration-300
               ${theme === 'dark' 
                 ? 'bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700' 
@@ -1113,16 +1241,14 @@ const ChatInterface: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
-              
-              <h2 className={`text-xl font-bold mb-4 flex items-center gap-2
-                ${theme === 'dark' ? 'text-gradient-blue' : 'text-gradient-blue-light'}`}
-                style={{
-                  background: theme === 'dark' ? 'linear-gradient(90deg, #60a5fa, #22d3ee)' : 'linear-gradient(90deg, #3b82f6, #0ea5e9)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 24 24" stroke="currentColor"
-                    style={{stroke: theme === 'dark' ? '#22d3ee' : '#0ea5e9'}}>
+                <h2 className={`text-xl font-bold mb-4 flex items-center gap-2 bg-gradient-to-r ${
+                theme === 'dark' 
+                  ? 'from-blue-400 to-cyan-300' 
+                  : 'from-blue-600 to-cyan-600'
+                } bg-clip-text text-transparent`}>
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 ${
+                  theme === 'dark' ? 'text-cyan-300' : 'text-cyan-600'
+                }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 Choisir un modèle
@@ -1134,12 +1260,9 @@ const ChatInterface: React.FC = () => {
               />
             </div>
           </div>
-        )}
-
-        {/* File Uploader Modal */}
+        )}        {/* File Uploader Modal */}
         {showFileUploader && (
-          <div className="fixed inset-0 flex items-center justify-center backdrop-blur-sm z-50 p-4"
-              style={{backgroundColor: 'rgba(0,0,0,0.6)'}}>
+          <div className="fixed inset-0 flex items-center justify-center backdrop-blur-sm z-50 p-4 bg-black bg-opacity-60">
             <div className={`relative max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-xl shadow-2xl transform transition-all duration-300
               ${theme === 'dark' 
                 ? 'bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700' 
@@ -1170,8 +1293,7 @@ const ChatInterface: React.FC = () => {
                 <h2 className={`text-xl font-semibold
                   ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                   Données Scrapées - {scrapedData.title}
-                </h2>
-                <button
+                </h2>                <button
                   onClick={() => setShowScrapedDataTable(false)}
                   title="Fermer"
                   aria-label="Fermer le tableau des données scrapées"
@@ -1187,10 +1309,9 @@ const ChatInterface: React.FC = () => {
               </div>
 
               {/* Scraped data table */}
-              <div className="p-4">
-                <ScrapedDataTable 
+              <div className="p-4">                <ScrapedDataTable 
                   data={scrapedData}
-                  onExport={handleExportCSV}
+                  onExportCSV={handleExportCSV}
                   theme={theme}
                 />
               </div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 
 interface ScrapedDataItem {
   url: string;
@@ -24,94 +24,11 @@ interface ScrapedDataItem {
 interface ScrapedDataTableProps {
   data: ScrapedDataItem;
   theme: 'dark' | 'light';
-  onExportCSV: () => void;
+  onExportCSV: (data: ScrapedDataItem, type: 'content' | 'links' | 'images' | 'metadata') => void;
 }
 
 const ScrapedDataTable: React.FC<ScrapedDataTableProps> = ({ data, theme, onExportCSV }) => {
   const [activeTab, setActiveTab] = useState<'content' | 'links' | 'images' | 'metadata'>('content');
-
-  // Prepare data for CSV export
-  const prepareCSVData = useMemo(() => {
-    const csvData = [];
-    
-    // Add basic info
-    csvData.push({
-      Type: 'Basic Info',
-      Property: 'URL',
-      Value: data.url,
-      Description: 'Source URL'
-    });
-    csvData.push({
-      Type: 'Basic Info',
-      Property: 'Title',
-      Value: data.title,
-      Description: 'Page title'
-    });
-    csvData.push({
-      Type: 'Basic Info',
-      Property: 'Content Preview',
-      Value: data.content.substring(0, 200) + '...',
-      Description: 'First 200 characters of content'
-    });
-
-    // Add metadata
-    if (data.metadata) {
-      Object.entries(data.metadata).forEach(([key, value]) => {
-        if (value) {
-          csvData.push({
-            Type: 'Metadata',
-            Property: key,
-            Value: value,
-            Description: `Page ${key}`
-          });
-        }
-      });
-    }
-
-    // Add links
-    if (data.links) {
-      data.links.forEach((link, index) => {
-        csvData.push({
-          Type: 'Link',
-          Property: `Link ${index + 1}`,
-          Value: link.url,
-          Description: link.text
-        });
-      });
-    }
-
-    // Add images
-    if (data.images) {
-      data.images.forEach((image, index) => {
-        csvData.push({
-          Type: 'Image',
-          Property: `Image ${index + 1}`,
-          Value: image.src,
-          Description: image.alt
-        });
-      });
-    }
-
-    return csvData;
-  }, [data]);
-
-  const downloadCSV = () => {
-    const csvContent = [
-      ['Type', 'Property', 'Value', 'Description'],
-      ...prepareCSVData.map(row => [row.Type, row.Property, row.Value, row.Description])
-    ].map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `scraped-data-${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    onExportCSV();
-  };
 
   const tabs = [
     { id: 'content', label: 'Content', icon: '📄' },
@@ -133,7 +50,7 @@ const ScrapedDataTable: React.FC<ScrapedDataTableProps> = ({ data, theme, onExpo
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-lg font-semibold">Scraped Data</h3>
           <button
-            onClick={downloadCSV}
+            onClick={() => onExportCSV(data, activeTab)}
             className={`px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-2 ${
               theme === 'dark'
                 ? 'bg-green-600 hover:bg-green-700 text-white'
