@@ -3,10 +3,9 @@ import axios from 'axios';
 
 async function testScraping() {
   try {
-    console.log('Testing enhanced scraping functionality...');
-      const response = await axios.post('http://localhost:3003/api/scrape', {
-      url: 'https://example.com',
-      prompt: 'Test scraping functionality',
+    console.log('Testing enhanced scraping functionality...');      const response = await axios.post('http://localhost:3001/api/scrape', {
+      url: 'https://vivatechnology.com/partners',
+      prompt: 'I want to obtain all the company name inside this link with their respective websites, employ range number and hashtags',
       mode: 'metadata'
     });
     
