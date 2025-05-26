@@ -10,6 +10,7 @@ Tetika is a futuristic, secure AI chat interface built with Next.js. It provides
 
 - **Multi-model support**: Connect to various AI models through OpenRouter
 - **RAG (Retrieval-Augmented Generation)**: Enhanced responses with real-time web search integration
+- **Web Scraping**: Extract structured data from websites using the `@scrape` command
 - **Advanced file analysis**: 
   - Upload documents for the AI to analyze and discuss
   - Analyze images using AI vision capabilities with compatible models
@@ -73,6 +74,22 @@ SERPAPI_API_KEY=your_serpapi_key_here
 - **Standard Chat Mode**: Default conversation with your selected AI model
 - **RAG Mode**: Enhanced responses with real-time web search results and citations
 - **File Analysis**: Upload documents for the AI to analyze and discuss
+
+### Using Web Scraping
+
+1. In the chat, use the `@scrape` command followed by a URL to extract data:
+   ```
+   @scrape https://example.com
+   ```
+
+2. Tetika will scrape the website and display structured data as tables in the chat interface.
+
+3. You can download the data as CSV files by clicking the download button on each table.
+
+4. Combine with questions to analyze the data:
+   ```
+   @scrape https://example.com/stock-prices Can you analyze these stock trends?
+   ```
 
 ## Technologies Used
 

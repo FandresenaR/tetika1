@@ -19,6 +19,24 @@ export interface Message {
   autoActivatedRAG?: boolean; // Indique si le mode RAG a été activé automatiquement
   reasoning?: string; // Added for Deep Research mode to store reasoning steps
   reasoningSources?: Array<{reference: string, sourceIndex: number}>; // Sources referenced in reasoning
+  scrapedData?: {
+    url: string;
+    tables?: {
+      id: string;
+      headers: string[];
+      rows: any[][];
+      caption?: string;
+      metadata?: {
+        rows_count: number;
+        columns_count: number;
+        data_types?: Record<string, string>;
+        extraction_method?: string;
+      };
+    }[];
+    insights?: Record<string, unknown>;
+    title?: string;
+    summary?: string;
+  };
 }
 
 export interface ChatSession {

@@ -11,9 +11,10 @@ import SettingsButton from '@/components/ui/SettingsButton';
 import { Message, ChatMode, ChatSession } from '@/types';
 import { openRouterModels, getModelById } from '@/lib/models';
 import { isImageFile, isVideoFile, createMediaDescription, createImageContentWithBase64 } from '@/lib/media-utils';
+import { generateUniqueId } from '@/lib/id-generator';
 
-// Génère un ID unique
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+// Use the centralized ID generator
+const generateId = generateUniqueId;
 
 // Variable to store the AbortController instance
 let abortController: AbortController | null = null;
@@ -255,6 +256,9 @@ const ChatInterface: React.FC = () => {
     }
   }, [messages, modelId, activeConversationId, conversations, defaultModelId]);
   
+  // Scraping functionality is now handled directly in the handleSendMessage function
+  // using the ScraperService that's dynamically imported
+
   const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null) => {
     if (!content.trim() && !file) return;
     
@@ -262,11 +266,15 @@ const ChatInterface: React.FC = () => {
     const currentFile = file || selectedFile;
     setSelectedFile(null);
     
+    // Check if the message contains an @scrape command
+    const { checkForScrapeCommand, removeScrapeCommand } = await import('@/lib/url-utils');
+    const scrapeCheck = checkForScrapeCommand(content);
+    
     // Création du message utilisateur avec le fichier joint si présent
     const userMessage: Message = {
       id: generateId(),
       role: 'user',
-      content,
+      content: scrapeCheck.isScrapeCommand ? removeScrapeCommand(content) : content,
       timestamp: Date.now(),
       mode: mode,
     };
@@ -285,6 +293,33 @@ const ChatInterface: React.FC = () => {
     // Ajouter le message à la conversation
     setMessages(prev => [...prev, userMessage]);
     setLoading(true);
+      // If it's a scrape command, handle it differently
+    if (scrapeCheck.isScrapeCommand && scrapeCheck.url) {
+      try {        // Dynamically import the scraper service
+        const ScraperService = (await import('@/lib/scraper-service')).default;
+        
+        // Generate a response with scraped data - no need to pass generateId, using centralized version
+        const scrapingResponse = await ScraperService.generateScrapingResponse(scrapeCheck.url);
+        // Add the response to the messages
+        setMessages(prev => [...prev, scrapingResponse]);
+        setLoading(false);
+        return; // Exit early as we've handled the scraping
+      } catch (error) {
+        console.error("Erreur lors de la récupération des données:", error);
+        
+        // Create an error message if scraping fails
+        const errorMessage: Message = {
+          id: generateId(),
+          role: 'assistant',
+          content: `Désolé, je n'ai pas pu extraire les données de l'URL demandée. Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+          timestamp: Date.now(),
+        };
+        
+        setMessages(prev => [...prev, errorMessage]);
+        setLoading(false);
+        return;
+      }
+    }
     
     try {
       // Récupérer l'objet modèle complet
@@ -816,8 +851,24 @@ const ChatInterface: React.FC = () => {
                           ? 'bg-gradient-to-r from-purple-900/40 to-indigo-900/40 text-purple-300 border border-purple-800/40 hover:from-purple-900/60 hover:to-indigo-900/60' 
                           : 'bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-700 border border-purple-200 hover:from-purple-200 hover:to-indigo-200'}`}>
                         Mode Deep Research (raisonnement avancé)
-                      </button>
-                      <span className="text-xs mt-2 opacity-75">Activer le raisonnement étape par étape avec le modèle Deepseek</span>
+                      </button>                      <span className="text-xs mt-2 opacity-75">Activer le raisonnement étape par étape avec le modèle Deepseek</span>
+                      
+                      {/* Web scraping instruction */}
+                      <div className={`mt-4 text-sm p-3 rounded-md border 
+                        ${theme === 'dark' 
+                          ? 'bg-gradient-to-r from-emerald-900/20 to-teal-900/20 border-emerald-800/40 text-emerald-300' 
+                          : 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 text-emerald-700'}`}>
+                        <div className="flex items-center gap-2 mb-1 font-medium">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Utiliser <code className="px-1.5 py-0.5 rounded bg-black/20 font-mono text-xs">@scrape</code>
+                        </div>
+                        <p className="text-xs opacity-90">
+                          Extrayez des données structurées d&apos;un site web en ajoutant <code className="px-1 py-0.5 rounded bg-black/20 font-mono text-xs">@scrape URL</code> à votre message.
+                          Exemple: <code className="px-1 py-0.5 rounded bg-black/20 font-mono text-xs">@scrape https://example.com</code>
+                        </p>
+                      </div>
                       
                       {/* Exemples de prompts pour démonstration client */}
                       <div className={`mt-8 w-full max-w-lg rounded-lg p-4 transition-all

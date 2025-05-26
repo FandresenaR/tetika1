@@ -47,10 +47,11 @@ const getApiKeys = () => {
   };
 };
 
-// Fonction pour générer un ID unique
-export function generateId() {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-}
+// Importer la fonction centralisée pour générer un ID unique
+import { generateUniqueId } from './id-generator';
+
+// Exporter la fonction de génération d'ID centralisée
+export const generateId = generateUniqueId;
 
 // Formatage des messages pour les API
 export function formatMessagesForAPI(messages: Message[]) {

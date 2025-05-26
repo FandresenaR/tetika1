@@ -28,8 +28,11 @@ interface ImageContent {
 
 type ContentPart = TextContent | ImageContent;
 
-// Helper function to generate a unique ID
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+// Import the centralized ID generator
+import { generateUniqueId } from '@/lib/id-generator';
+
+// Use the centralized ID generator
+const generateId = generateUniqueId;
 
 export async function POST(request: NextRequest) {
   try {

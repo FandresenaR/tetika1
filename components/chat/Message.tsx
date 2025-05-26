@@ -3,6 +3,7 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import { Message as MessageType } from '@/types';
 import { speakText, stopSpeech, detectLanguage } from '@/lib/speech-utils';
 import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
+import ScrapedTable from '@/components/ui/ScrapedTable';
 
 // Define the code sidebar context type
 interface CodeSidebarContextType {
@@ -602,11 +603,35 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
           <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>
         </>
       );
-    }
-
-    if (!message.sources || message.sources.length === 0) {
-      return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
-    }    // Fonction pour déterminer si une ligne est uniquement une référence source
+    }    if (!message.sources || message.sources.length === 0) {
+      return (
+        <>
+          <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>
+            {message.content}
+          </ReactMarkdown>
+          
+          {/* Display scraped data if available */}
+          {message.scrapedData?.tables && message.scrapedData.tables.length > 0 && (
+            <div className="mt-4">
+              <div className={`mb-2 text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                <span className="flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Données extraites de {message.scrapedData.url}
+                </span>
+              </div>
+              
+              <div className="space-y-4">
+                {message.scrapedData.tables.map((table) => (
+                  <ScrapedTable key={table.id} table={table} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }// Fonction pour déterminer si une ligne est uniquement une référence source
     const isSourceReferenceLine = (line: string) => {
       // Vérifie si la ligne contient uniquement une référence comme [1], [2], etc.
       const onlyRefRegex = /^\s*\[(\d+)\]\s*$|^\s*\((\d+)\)\s*$|^\s*(\d+)⃣\s*$|^\s*(\d+)️⃣\s*$/;
