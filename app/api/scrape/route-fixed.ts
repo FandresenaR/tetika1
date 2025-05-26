@@ -52,10 +52,6 @@ function normalizeUrl(url: string, baseUrl: string): string {
       const base = new URL(baseUrl);
       return `${base.protocol}//${base.host}${url}`;
     }
-    // Handle www without protocol
-    if (url.startsWith('www.')) {
-      return `https://${url}`;
-    }
     const base = new URL(baseUrl);
     return `${base.protocol}//${base.host}/${url}`;
   } catch {
@@ -334,7 +330,7 @@ function extractVivaPartnersFiltered($: cheerio.CheerioAPI, url: string, filters
       { 
         name: "DATEXIM", 
         website: "https://www.datexim.ai", 
-        tags: ["#Healthcare & Wellness", "#Artificial Intelligence"] 
+        tags: ["#Healthcare & Wellness"] 
       },
       { 
         name: "DEEPGING", 
@@ -344,7 +340,7 @@ function extractVivaPartnersFiltered($: cheerio.CheerioAPI, url: string, filters
       { 
         name: "FINNOCARE", 
         website: "https://finnocare.fi", 
-        tags: ["#Healthcare & Wellness", "#Fintech"] 
+        tags: ["#Healthcare & Wellness"] 
       },
       { 
         name: "JURATA", 
@@ -355,80 +351,15 @@ function extractVivaPartnersFiltered($: cheerio.CheerioAPI, url: string, filters
         name: "MUHCCS", 
         website: "https://muhc.ca", 
         tags: ["#Healthcare & Wellness"] 
-      },
-      { 
-        name: "MEDTRONIC", 
-        website: "https://www.medtronic.com", 
-        tags: ["#Healthcare & Wellness", "#Medical Devices"] 
-      },
-      { 
-        name: "ABBVIE", 
-        website: "https://www.abbvie.com", 
-        tags: ["#Healthcare & Wellness", "#Pharmaceuticals"] 
-      },
-      { 
-        name: "NOVARTIS", 
-        website: "https://www.novartis.com", 
-        tags: ["#Healthcare & Wellness", "#Pharmaceuticals"] 
-      },
-      { 
-        name: "PHILIPS", 
-        website: "https://www.philips.com", 
-        tags: ["#Healthcare & Wellness", "#Technology"] 
-      },
-      {
-        name: "ROCHE",
-        website: "https://www.roche.com",
-        tags: ["#Healthcare & Wellness", "#Pharmaceuticals", "#Diagnostics"]
       }
     ];
     
     // Add them to our companies array
     companies.push(...healthcareCompanies);
     
-  // Try to find specific healthcare company elements using more comprehensive selectors
-    const healthcareElements = $(
-      'div:has(div:contains("Health")), ' +
-      'div:has(span:contains("Health")), ' +
-      'div:has(div:contains("Wellness")), ' + 
-      'div:has(span:contains("Wellness")), ' +
-      'div:has(p:contains("Health")), ' +
-      'div:has([class*="card"]:has(div:contains("Health"))), ' +
-      'div:has([class*="tag"]:contains("Health"))'
-    );
+    // Try to find specific healthcare company elements
+    const healthcareElements = $('div:has(div:contains("Health")), div:has(span:contains("Health"))');
     console.log(`[SCRAPER] Found ${healthcareElements.length} potential healthcare elements`);
-    
-    // Create a mapping of company names to websites for better matching
-    const websiteMap = new Map<string, string>();
-    $('a[href]').each((_, element) => {
-      const $link = $(element);
-      const href = $link.attr('href');      if (href && 
-          !href.includes('vivatechnology.com') && 
-          !href.includes('facebook.com') &&
-          !href.includes('twitter.com') &&
-          !href.includes('linkedin.com') &&
-          !href.includes('instagram.com') &&
-          (href.startsWith('http') || href.startsWith('www'))) {
-        // Store domain as key for matching
-        try {
-          const domain = new URL(normalizeUrl(href, url)).hostname.replace('www.', '');
-          websiteMap.set(domain, normalizeUrl(href, url));
-        } catch {
-          // If URL parsing fails, just store the normalized URL
-          websiteMap.set(href, normalizeUrl(href, url));
-        }
-      }
-    });
-    
-    // Extract all hashtags from the page
-    const allHashtags = new Set<string>();
-    $('[class*="tag"], [class*="badge"], [class*="hashtag"], [class*="categor"]').each((_, element) => {
-      const tagText = $(element).text().trim();
-      if (tagText && tagText.length < 30) {
-        allHashtags.add(tagText.startsWith('#') ? tagText : `#${tagText}`);
-      }
-    });
-    console.log(`[SCRAPER] Extracted ${allHashtags.size} unique hashtags from the page`);
     
     healthcareElements.each((_, element) => {
       const $el = $(element);
@@ -461,52 +392,16 @@ function extractVivaPartnersFiltered($: cheerio.CheerioAPI, url: string, filters
           tags: ['#Healthcare & Wellness']
         };
         
-        // Try to find a website link directly in this element
+        // Try to find a website link
         const links = $el.find('a[href]');
-        let foundWebsite = false;
-        
         links.each((_, link) => {
           const href = $(link).attr('href');
           if (href && 
               !href.includes('vivatechnology.com') && 
               (href.startsWith('http') || href.startsWith('www'))) {
             company.website = normalizeUrl(href, url);
-            foundWebsite = true;
           }
         });
-        
-        // If no direct website found, try to match from our website map
-        if (!foundWebsite) {
-          // Convert company name to a possible domain format for matching
-          const possibleDomain = companyName.toLowerCase()
-            .replace(/[^\w\s.-]/g, '')  // Remove special chars except dots, hyphens
-            .replace(/\s+/g, '')        // Remove spaces
-            .replace(/\.$/, '');         // Remove trailing dots
-          
-          // Try to find a matching domain
-          for (const [domain, websiteUrl] of websiteMap.entries()) {
-            if (domain.includes(possibleDomain) || possibleDomain.includes(domain)) {
-              company.website = websiteUrl;
-              foundWebsite = true;
-              break;
-            }
-          }
-        }
-        
-        // Collect tags specific to this company
-        const companyHashtags = new Set<string>();
-        companyHashtags.add('#Healthcare & Wellness'); // Always add the main filter
-        
-        // Extract tags from this element
-        $el.find('[class*="tag"], [class*="badge"], [class*="hashtag"]').each((_, tagElement) => {
-          const tagText = $(tagElement).text().trim();
-          if (tagText && tagText.length < 30 && !tagText.includes('Startup')) {
-            companyHashtags.add(tagText.startsWith('#') ? tagText : `#${tagText}`);
-          }
-        });
-        
-        // Update company tags
-        company.tags = Array.from(companyHashtags);
         
         // Add to companies if not a duplicate
         if (!companies.some(c => c.name.toLowerCase() === company.name.toLowerCase())) {
@@ -560,142 +455,49 @@ function extractVivaPartnersFiltered($: cheerio.CheerioAPI, url: string, filters
           employees?: string;
           tags?: string[];
         } = { name: companyName };
-          // Extract website if available - enhanced approach
-        let foundWebsite = false;
         
-        // First try direct links within card
-        const $links = $card.find('a[href]');
-        if ($links.length > 0) {
-          $links.each((_, link) => {
-            const href = $(link).attr('href');
-            if (href && 
-                !href.includes('vivatechnology.com') &&
-                !href.includes('facebook.com') &&
-                !href.includes('twitter.com') &&
-                !href.includes('linkedin.com') &&
-                !href.includes('instagram.com')) {
-              company.website = normalizeUrl(href, url);
-              foundWebsite = true;
-              return false; // break the each loop
-            }
-          });
+        // Extract website if available
+        const $link = $card.find('a[href]');
+        if ($link.length > 0) {
+          const href = $link.attr('href');
+          if (href && !href.includes('vivatechnology.com')) {
+            company.website = normalizeUrl(href, url);
+          }
         }
         
-        // If no website found directly, try domain name matching
-        if (!foundWebsite) {
-          // Try to match company name with websites in our mapping
-          const possibleDomain = companyName.toLowerCase()
-            .replace(/[^\w\s.-]/g, '')  // Remove special chars except dots, hyphens
-            .replace(/\s+/g, '')        // Remove spaces
-            .replace(/\.$/, '');         // Remove trailing dots
-          
-          // Additional company name variations for better domain matching
-          const companyVariations = [
-            possibleDomain,
-            // Try removing common suffixes/prefixes
-            possibleDomain.replace(/group$|inc$|ltd$|llc$|corp$|sa$|gmbh$|ag$/g, ''),
-            // Try abbreviations (take first letter of each word)
-            companyName.split(/\s+/).map(word => word.charAt(0)).join('').toLowerCase(),
-            // Handle special cases like '&' to 'and'
-            companyName.toLowerCase().replace(/&/g, 'and').replace(/[^\w\s.-]/g, '').replace(/\s+/g, '')
-          ];
-          
-          // Look for these domain variations in all links on the page
-          $('a[href]').each((_, element) => {
-            const href = $(element).attr('href');
-            if (href && 
-                !href.includes('vivatechnology.com') &&
-                !href.includes('facebook.com') &&
-                !href.includes('twitter.com') &&
-                !href.includes('linkedin.com') &&
-                !href.includes('instagram.com') &&
-                (href.startsWith('http') || href.startsWith('www'))) {
-              try {
-                const normalized = normalizeUrl(href, url);
-                const domain = new URL(normalized).hostname.toLowerCase().replace('www.', '');
-                // Check multiple variations of the company name against the domain
-                for (const variation of companyVariations) {
-                  if (domain.includes(variation) || 
-                      variation.includes(domain.split('.')[0]) ||
-                      // Calculate similarity (basic approach)
-                      (variation.length > 3 && domain.split('.')[0].includes(variation.substring(0, 3)))) {
-                    company.website = normalized;
-                    foundWebsite = true;
-                    return false; // break the each loop
-                  }
-                }
-              } catch {
-                // Skip if URL parsing fails
-              }
-            }
-          });
-        }
+        // Extract tags/hashtags
+        const tags: string[] = [];
         
-        // Extract tags/hashtags - enhanced approach
-        const tags = new Set<string>();
-        
-        // Look for tag/badge elements in this card
+        // Look for tag/badge elements
         $card.find('[class*="tag"], [class*="badge"], [class*="hashtag"]').each((_, tagElement) => {
           const tagText = $(tagElement).text().trim();
           if (tagText && tagText.length < 30) {
-            tags.add(tagText.startsWith('#') ? tagText : `#${tagText}`);
+            tags.push(tagText.startsWith('#') ? tagText : `#${tagText}`);
           }
         });
         
         // Add filter hashtags
         if (hashtags) {
-          tags.add(`#${hashtags}`);
+          if (!tags.some(tag => tag.toLowerCase().includes(hashtags.toLowerCase()))) {
+            tags.push(`#${hashtags}`);
+          }
         }
         
         if (sector) {
-          tags.add(`#${sector}`);
+          if (!tags.some(tag => tag.toLowerCase().includes(sector.toLowerCase()))) {
+            tags.push(`#${sector}`);
+          }
         }
         
         if (type) {
-          tags.add(`#${type}`);
-        }
-        
-        // Check for known hashtag terms in the company description/details
-        const cardText = $card.text().toLowerCase();
-        
-        // Common industry categories
-        const industryCategories = {
-          'health': 'Healthcare & Wellness',
-          'wellness': 'Healthcare & Wellness',
-          'medical': 'Healthcare & Wellness',
-          'pharma': 'Healthcare & Wellness',
-          'ai': 'Artificial Intelligence',
-          'artificial intelligence': 'Artificial Intelligence',
-          'machine learning': 'Artificial Intelligence',
-          'deep tech': 'Deep Tech & Quantum Computing',
-          'quantum': 'Deep Tech & Quantum Computing',
-          'supply chain': 'Industry & Supply Chain',
-          'industry': 'Industry & Supply Chain',
-          'manufacturing': 'Industry & Supply Chain',
-          'fintech': 'Fintech',
-          'finance': 'Fintech',
-          'banking': 'Fintech',
-          'payment': 'Fintech',
-          'retail': 'Retail & E-commerce',
-          'e-commerce': 'Retail & E-commerce',
-          'ecommerce': 'Retail & E-commerce',
-          'commerce': 'Retail & E-commerce',
-          'sustainable': 'Sustainability',
-          'climate': 'Sustainability',
-          'green': 'Sustainability',
-          'renewable': 'Sustainability'
-        };
-        
-        // Check card text for each category
-        for (const [keyword, category] of Object.entries(industryCategories)) {
-          if (cardText.includes(keyword)) {
-            tags.add(`#${category}`);
+          if (!tags.some(tag => tag.toLowerCase().includes(type.toLowerCase()))) {
+            tags.push(`#${type}`);
           }
         }
         
         // Add tags to company
-        if (tags.size > 0) {
-          company.tags = Array.from(tags);
+        if (tags.length > 0) {
+          company.tags = tags;
         }
         
         // Extract employees info if available
@@ -759,52 +561,16 @@ function extractVivaPartnersFiltered($: cheerio.CheerioAPI, url: string, filters
             company.tags.push(`#${hashtags}`);
           }
         }
-          // Find website links with improved matching
-        let foundWebsite = false;
         
-        // First try direct links
+        // Find website links
         $el.find('a[href]').each((_, linkElement) => {
           const href = $(linkElement).attr('href');
           if (href && 
               !href.includes('vivatechnology.com') && 
-              !href.includes('facebook.com') &&
-              !href.includes('twitter.com') &&
-              !href.includes('linkedin.com') &&
-              !href.includes('instagram.com') &&
               (href.startsWith('http') || href.startsWith('www'))) {
             company.website = normalizeUrl(href, url);
-            foundWebsite = true;
-            return false; // Break the loop
           }
         });
-        
-        // If no direct link found, try to match by domain name similarity
-        if (!foundWebsite) {
-          const possibleDomain = companyName.toLowerCase()
-            .replace(/[^\w\s.-]/g, '') 
-            .replace(/\s+/g, '')
-            .replace(/\.$/, '');
-          
-          // Look through all links on the page
-          $('a[href]').each((_, element) => {
-            const href = $(element).attr('href');
-            if (href && 
-                !href.includes('vivatechnology.com') &&
-                (href.startsWith('http') || href.startsWith('www'))) {              try {
-                const domain = new URL(normalizeUrl(href, url)).hostname.toLowerCase().replace('www.', '');
-                if (domain.includes(possibleDomain) || 
-                    possibleDomain.includes(domain) ||
-                    domain.split('.')[0] === possibleDomain) {
-                  company.website = normalizeUrl(href, url);
-                  foundWebsite = true;
-                  return false; // Break the loop
-                }
-              } catch {
-                // Skip if URL parsing fails
-              }
-            }
-          });
-        }
         
         // Add to companies if not a duplicate
         if (!companies.some(c => c.name.toLowerCase() === company.name.toLowerCase())) {

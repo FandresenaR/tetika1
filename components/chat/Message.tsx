@@ -43,6 +43,7 @@ interface MessageProps {
   showBottomSuggestions?: boolean; // Pour contrôler l'affichage des suggestions en bas
   onDataAccess?: (messageId: string) => void; // Added for data access functionality
   onModify?: (messageId: string, currentContent: string) => void; // Added for modify functionality
+  hasScrapedData?: boolean; // Added to indicate if this message has scraped data
 }
 
 interface CodeBlockProps {
@@ -284,7 +285,7 @@ const getSourceUrl = (source: SourceType): string => {
   return source?.url || source?.link || '#';
 };
 
-export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onRegenerate, onRegenerateResponse, onSuggestionClick, onDataAccess, onModify }) => {  
+export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onRegenerate, onRegenerateResponse, onSuggestionClick, onDataAccess, onModify, hasScrapedData }) => {  
   const [showSources, setShowSources] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);  
   const [isCopiedMessage, setIsCopiedMessage] = useState(false);
@@ -359,24 +360,10 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       }, 100);
     }
   };
-
-  // Function to detect if a user message contains scraping-related content
-  const isScrapingMessage = (): boolean => {
-    if (isAI || !message.content) return false;
-    
-    const content = message.content.toLowerCase();
-    const scrapingKeywords = [
-      'extract', 'scrape', 'scraping', 'scrap',
-      'company data', 'companies', 'partners', 'exhibitors',
-      'startup', 'startups', 'businesses', 'websites',
-      'contact information', 'employee count', 'team size',
-      'business directory', 'company list', 'partner list',
-      'extract data', 'get data', 'find companies',
-      'collect information', 'gather data'
-    ];
-    
-    return scrapingKeywords.some(keyword => content.includes(keyword));
-  };  // Function to handle data access button click
+  // Function to check if this message has scraped data associated with it
+  const hasScrapedDataForMessage = (): boolean => {
+    return !isAI && hasScrapedData === true;
+  };// Function to handle data access button click
   const handleDataAccess = () => {
     try {
       if (onDataAccess) {
@@ -930,7 +917,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
           {!isAI && !isEditing && (
             <div className="mt-3 flex items-center gap-2">
               {/* Data Access Button for User Scraping Messages */}
-              {isScrapingMessage() && (
+              {hasScrapedDataForMessage() && (
                 <button 
                   onClick={handleDataAccess}
                   className={`text-xs ${theme === 'dark' 
@@ -1237,24 +1224,6 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                 theme={theme}
                 previousMessages={message.conversationContext}
               />
-            </div>
-          )}
-
-          {/* Data access button - for user messages that contain scraping requests */}
-          {!isAI && isScrapingMessage() && (
-            <div className="mt-3">
-              <button 
-                onClick={handleDataAccess}
-                className={`text-xs ${theme === 'dark' 
-                  ? 'bg-green-900/50 hover:bg-green-800/50 text-green-300' 
-                  : 'bg-green-100 hover:bg-green-200 text-green-700'} px-2 py-1 rounded flex items-center gap-1 transition-colors`}
-                title="Accéder aux données extraites"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M3 7l9 7 9-7" />
-                </svg>
-                Accéder aux données
-              </button>
             </div>
           )}
         </div>

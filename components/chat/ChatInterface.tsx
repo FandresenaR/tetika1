@@ -80,11 +80,8 @@ const ChatInterface: React.FC = () => {
   }
     const [scrapedData, setScrapedData] = useState<ScrapedDataItem | null>(null);
   const [showScrapedDataTable, setShowScrapedDataTable] = useState(false);
-    // Storage for associating scraped data with specific messages
+  // Storage for associating scraped data with specific messages
   const [messageScrapedData, setMessageScrapedData] = useState<Map<string, ScrapedDataItem>>(new Map());
-  
-  // State to track the current user message ID for scraping purposes
-  const [currentUserMessageId, setCurrentUserMessageId] = useState<string | null>(null);
   // Anciennement pour les suggestions RAG - supprimé
     // Fonction pour détecter si on est sur mobile
   useEffect(() => {
@@ -288,16 +285,14 @@ const ChatInterface: React.FC = () => {
       return () => clearTimeout(timeoutId);
     }
   }, [messages, modelId, activeConversationId, conversations, defaultModelId]);
-    const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null) => {
+  const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null, scrapingUrl?: string) => {
     if (!content.trim() && !file) return;
     
     // Reset le fichier sélectionné après utilisation
     const currentFile = file || selectedFile;
     setSelectedFile(null);
-    
-    // Generate message ID and set it for scraping purposes
+      // Generate message ID
     const messageId = generateId();
-    setCurrentUserMessageId(messageId);
     
     // Création du message utilisateur avec le fichier joint si présent
     const userMessage: Message = {
@@ -318,9 +313,21 @@ const ChatInterface: React.FC = () => {
       };
       console.log("Message avec fichier attaché:", userMessage);
     }
-    
-    // Ajouter le message à la conversation
+      // Ajouter le message à la conversation
     setMessages(prev => [...prev, userMessage]);
+    
+    // If this is a scraping request, trigger scraping first before AI processing
+    if (scrapingUrl) {
+      try {
+        await handleScrapWebsite(scrapingUrl, content, 'all', messageId);
+        // Exit early - scraping will handle its own success/error messages
+        return;
+      } catch (error) {
+        console.error('Erreur lors du scraping:', error);
+        // Continue with normal AI processing if scraping fails
+      }
+    }
+    
     setLoading(true);
     
     try {
@@ -1234,6 +1241,7 @@ Vous pouvez consulter les données détaillées dans le tableau qui s'est ouvert
                           key={message.id} 
                           message={transformedMessage} 
                           theme={theme} 
+                          hasScrapedData={messageScrapedData.has(message.id)}
                           onRegenerateResponse={handleRegenerateResponse}
                           onSuggestionClick={(suggestion) => {
                             setRagMode(true);
@@ -1265,8 +1273,7 @@ Vous pouvez consulter les données détaillées dans le tableau qui s'est ouvert
                   ? 'border-gray-800 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 shadow-lg shadow-blue-900/10' 
                   : 'border-gray-200 bg-gradient-to-r from-white via-gray-50 to-white shadow-lg shadow-blue-200/10'
               }`}
-            >              <div className="max-w-4xl mx-auto">
-                <ChatInput 
+            >              <div className="max-w-4xl mx-auto">                <ChatInput 
                   onSendMessage={handleSendMessage}
                   loading={loading}
                   theme={theme}
@@ -1280,8 +1287,6 @@ Vous pouvez consulter les données détaillées dans le tableau qui s'est ouvert
                     content: m.content 
                   }))}                  onInputFocus={() => {}}
                   onStopGeneration={handleStopGeneration}
-                  onScrapWebsite={handleScrapWebsite}
-                  currentUserMessageId={currentUserMessageId || undefined}
                 />
               </div>
             </div>

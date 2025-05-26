@@ -3,7 +3,7 @@ import { ChatMode } from '@/types';
 import ContextMenu from '@/components/ui/ContextMenu';
 
 interface ChatInputProps {
-  onSendMessage: (message: string, mode: ChatMode, file: File | null) => void;
+  onSendMessage: (message: string, mode: ChatMode, file: File | null, scrapingUrl?: string) => void;
   loading: boolean;
   theme: 'dark' | 'light';
   ragMode: boolean;
@@ -13,8 +13,6 @@ interface ChatInputProps {
   onCancelFileUpload: () => void;
   _previousMessages?: { role: string; content: string }[];  onInputFocus?: () => void;
   onStopGeneration?: () => void;
-  onScrapWebsite?: (url: string, prompt: string, mode?: 'content' | 'links' | 'images' | 'all', messageId?: string) => void;
-  currentUserMessageId?: string; // For passing the current user message ID when scraping
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({  onSendMessage,
@@ -26,20 +24,18 @@ const ChatInput: React.FC<ChatInputProps> = ({  onSendMessage,
   onCancelFileUpload,
   // Removed unused previousMessages parameter by prefixing with underscore
   onInputFocus,
-  onStopGeneration,
-  onScrapWebsite,
-  currentUserMessageId
+  onStopGeneration
 }) => {
   const [message, setMessage] = useState('');  const textareaRef = useRef<HTMLTextAreaElement>(null);  const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [cursorPosition, setCursorPosition] = useState(0);  const [scrapingUrl, setScrapingUrl] = useState<string | null>(null);
   const [previousRagMode, setPreviousRagMode] = useState<boolean>(false);
-  const [showRagNotification, setShowRagNotification] = useState<boolean>(false);const handleSendMessage = useCallback(() => {
-    if (message.trim()) {      // If we have a scraping URL waiting, execute scraping with the message as prompt
+  const [showRagNotification, setShowRagNotification] = useState<boolean>(false);  const handleSendMessage = useCallback(() => {
+    if (message.trim()) {      
+      // If we have a scraping URL waiting, execute scraping with the message as prompt
       if (scrapingUrl) {
-        if (onScrapWebsite) {
-          onScrapWebsite(scrapingUrl, message.trim(), 'all', currentUserMessageId);
-        }
+        // First, send the message normally to create it in the chat
+        onSendMessage(message, ragMode ? 'rag' : 'standard', selectedFile, scrapingUrl);
         setScrapingUrl(null);
       } else {
         // Normal message sending
@@ -47,7 +43,7 @@ const ChatInput: React.FC<ChatInputProps> = ({  onSendMessage,
       }
       setMessage('');
     }
-  }, [message, ragMode, selectedFile, onSendMessage, scrapingUrl, onScrapWebsite, currentUserMessageId]);
+  }, [message, ragMode, selectedFile, onSendMessage, scrapingUrl]);
 
   // Handle text input changes and detect "@" symbol
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
