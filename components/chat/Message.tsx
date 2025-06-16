@@ -3,6 +3,7 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import { Message as MessageType } from '@/types';
 import { speakText, stopSpeech, detectLanguage } from '@/lib/speech-utils';
 import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
+import { getModelById } from '@/lib/models';
 
 // Define the code sidebar context type
 interface CodeSidebarContextType {
@@ -776,29 +777,42 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       }`}>
         <div className={`p-4 rounded-xl backdrop-blur-sm relative`}>
           <div className="flex items-center mb-3 flex-wrap">
-            {isAI ? getAiIcon() : getUserIcon()}
-
-            <span className={`ml-2 font-medium text-sm flex items-center gap-1.5
+            {isAI ? getAiIcon() : getUserIcon()}            <span className={`ml-2 font-medium text-sm flex items-center gap-1.5
               ${theme === 'dark' ? (isRagMode ? 'text-blue-300' : 'text-gray-200') : (isRagMode ? 'text-blue-700' : 'text-gray-800')}`}>
               {isAI ? (
-                <>                  TETIKA AI
-                  {isRagMode && (
-                    <span className="flex items-center gap-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>                      {isAutoRAG && (
-                        <span className={`ml-1 text-xs rounded-full px-1.5 py-0.5 flex items-center
-                          ${theme === 'dark' 
-                            ? 'bg-indigo-800/50 text-indigo-300 border border-indigo-700/30' 
-                            : 'bg-indigo-100 text-indigo-700 border border-indigo-200/50'}`}>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                <>
+                  <div className="flex flex-col">
+                    <span className="flex items-center gap-1.5">
+                      TETIKA AI
+                      {isRagMode && (
+                        <span className="flex items-center gap-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          Auto
+                          {isAutoRAG && (
+                            <span className={`ml-1 text-xs rounded-full px-1.5 py-0.5 flex items-center
+                              ${theme === 'dark' 
+                                ? 'bg-indigo-800/50 text-indigo-300 border border-indigo-700/30' 
+                                : 'bg-indigo-100 text-indigo-700 border border-indigo-200/50'}`}>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                              Auto
+                            </span>
+                          )}
                         </span>
                       )}
                     </span>
-                  )}
+                    {/* Display model name if available */}
+                    {message.modelId && (() => {
+                      const model = getModelById(message.modelId);
+                      return model ? (
+                        <span className={`text-xs opacity-75 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {model.name}
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
                 </>
               ) : (
                 <>

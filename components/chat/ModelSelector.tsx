@@ -105,9 +105,54 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const freeTagClass = theme === 'dark'
     ? 'bg-green-900/50 text-green-300'
     : 'bg-green-100 text-green-700';
-  
-  return (
+    return (
     <div className={`p-4 max-h-[90vh] overflow-y-auto ${sectionBgClass} rounded-lg transition-colors duration-300`}>
+      {/* Modèle actuellement sélectionné */}
+      {effectiveSelectedModelId && (() => {
+        const selectedModel = allModels.find(model => model.id === effectiveSelectedModelId);
+        return selectedModel ? (
+          <div className={`mb-4 p-3 rounded-lg border-2 ${theme === 'dark' 
+            ? 'bg-cyan-950/30 border-cyan-700/50 text-cyan-200' 
+            : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className={`text-xs font-medium uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-cyan-300/70' : 'text-blue-600'}`}>
+                  Modèle actuel
+                </p>
+                <h3 className="font-medium text-sm mb-1">{selectedModel.name}</h3>
+                <p className={`text-xs ${theme === 'dark' ? 'text-cyan-300/60' : 'text-blue-600/70'}`}>
+                  {selectedModel.description}
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`text-xs px-2 py-1 rounded-full ${theme === 'dark' 
+                    ? 'bg-gray-800/50 text-gray-300' 
+                    : 'bg-gray-100 text-gray-700'}`}>
+                    {selectedModel.provider === 'openrouter' ? 'OpenRouter' : selectedModel.provider === 'notdiamond' ? 'NotDiamond' : selectedModel.provider}
+                  </span>
+                  {selectedModel.free && (
+                    <span className={`text-xs px-2 py-1 rounded-full ${freeTagClass}`}>
+                      Gratuit
+                    </span>
+                  )}
+                  {selectedModel.category && (
+                    <span className={`text-xs px-2 py-1 rounded-full ${theme === 'dark' 
+                      ? 'bg-indigo-900/50 text-indigo-300' 
+                      : 'bg-indigo-100 text-indigo-700'}`}>
+                      {categoryTranslations[selectedModel.category] || selectedModel.category}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className={`ml-3 p-2 rounded-full ${theme === 'dark' ? 'bg-cyan-700/50' : 'bg-blue-200'}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        ) : null;
+      })()}
+      
       {/* Barre de recherche */}
       <div className="mb-4">
         <div className={`flex items-center border rounded-lg overflow-hidden ${theme === 'dark' ? 'border-gray-700' : 'border-gray-300'}`}>

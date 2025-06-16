@@ -4,6 +4,7 @@ export interface Message {
   content: string;
   timestamp: number;
   mode?: ChatMode; // Ajout de la propriété mode
+  modelId?: string; // ID du modèle utilisé pour générer la réponse
   sources?: {
     title: string;
     url: string;

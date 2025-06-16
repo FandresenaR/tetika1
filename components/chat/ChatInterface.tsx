@@ -492,13 +492,13 @@ const ChatInterface: React.FC = () => {
         if (data.autoActivatedRAG) {
           setRagMode(true);
         }
-        
-        // Créer le message de réponse
+          // Créer le message de réponse
         const assistantMessage: Message = {
           id: generateId(),
           role: 'assistant',
           content: data.message,
           timestamp: Date.now(),
+          modelId: modelId, // Ajouter l'ID du modèle utilisé
           sources: data.sources ? data.sources.map((source: { 
             title: string; 
             url: string; 
@@ -557,13 +557,13 @@ const ChatInterface: React.FC = () => {
              err.message.includes('Unexpected token'))) {
           errorContent = `Erreur de format de données: ${err.message}. Veuillez vérifier que votre message ne contient pas de caractères spéciaux qui pourraient poser problème.`;
         }
-        
-        // Ajouter un message d'erreur uniquement pour les vraies erreurs
+          // Ajouter un message d'erreur uniquement pour les vraies erreurs
         const errorMessage: Message = {
           id: generateId(),
           role: 'assistant',
           content: errorContent,
           timestamp: Date.now(),
+          modelId: modelId, // Ajouter l'ID du modèle utilisé
           mode: mode,
         };
         setMessages(prev => [...prev, errorMessage]);
@@ -571,13 +571,13 @@ const ChatInterface: React.FC = () => {
     } catch (outerError) {
       // Gestion des erreurs dans le bloc externe (hors API)
       console.error('Erreur externe:', outerError);
-      
-      // Ajouter un message d'erreur
+        // Ajouter un message d'erreur
       const errorMessage: Message = {
         id: generateId(),
         role: 'assistant',
         content: `Erreur: ${outerError instanceof Error ? outerError.message : 'Erreur inconnue'}`,
         timestamp: Date.now(),
+        modelId: modelId, // Ajouter l'ID du modèle utilisé
         mode: mode,
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -787,19 +787,23 @@ const ChatInterface: React.FC = () => {
               </svg>
               <span className="hidden md:inline">Nouvelle conversation</span>
             </button>
-            
-            <button
+              <button
               className={`px-2 py-1 rounded-lg text-xs transition-all duration-300 shadow-lg hover:scale-105 flex items-center gap-1
                 ${theme === 'dark' 
                   ? 'bg-gradient-to-r from-blue-600/30 to-cyan-600/30 hover:from-blue-600/40 hover:to-cyan-600/40 text-blue-300 border border-blue-800' 
                   : 'bg-gradient-to-r from-blue-100 to-cyan-100 hover:from-blue-200 hover:to-cyan-200 text-blue-700 border border-blue-200'}`}
               onClick={() => setIsModelSelectorOpen(true)}
-            >              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span className="hidden md:inline">Changer de modèle</span>
-              <span className="md:hidden hidden xs:inline">{currentModelName}</span>
-            </button>            <button
+              <div className="flex flex-col items-start leading-tight">
+                <span className="hidden md:inline text-xs">Changer de modèle</span>
+                <span className={`text-xs font-medium truncate max-w-[120px] ${theme === 'dark' ? 'text-cyan-200' : 'text-blue-800'}`}>
+                  {currentModelName}
+                </span>
+              </div>
+            </button><button
               onClick={() => setShowFileUploader(true)}
               className={`px-2 py-1 rounded-lg text-xs transition-all duration-300 shadow-lg hover:scale-105 flex items-center gap-1
                 ${theme === 'dark' 
