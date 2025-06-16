@@ -1091,6 +1091,7 @@ const ChatInterface: React.FC = () => {
                   ragMode={ragMode}
                   selectedRAGProvider={selectedRAGProvider}
                   onRagModeChange={toggleRagMode}
+                  onRAGProviderChange={setSelectedRAGProvider}
                   onFileUploadClick={() => setShowFileUploader(true)}
                   selectedFile={selectedFile}
                   onCancelFileUpload={() => setSelectedFile(null)}
