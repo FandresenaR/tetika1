@@ -4,6 +4,267 @@ import { Message as MessageType } from '@/types';
 import { speakText, stopSpeech, detectLanguage } from '@/lib/speech-utils';
 import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
 
+// Function to merge adjacent QSharp code fragments in a React markdown rendering context
+const mergeQSharpFragments = (contentString: string): string => {
+  if (!contentString) return '';
+  
+  // Check if we need to process QSharp code - expanded detection criteria
+  if (!contentString.includes('Microsoft.Quantum') && !contentString.includes('namespace') && 
+      !contentString.includes('operation') && !contentString.includes('```qsharp') && 
+      !contentString.includes('```text') && !contentString.includes('open Microsoft') &&
+      !contentString.includes('Qubit')) {
+    return contentString;
+  }
+  
+  // Keywords indicating Q# code that may be in text blocks - expanded list
+  const qsharpKeywords = [
+    'Microsoft.Quantum', 'namespace', 'operation', 'function', 'use', 'using',
+    'open Microsoft', 'MeasureWithProbability', 'CNOT', 'H(', 'X(', 'M(', 'Qubit',
+    'Microsoft.Quantum.Canon', 'Microsoft.Quantum.Intrinsic', 'Microsoft.Quantum.Measurement',
+    'Result', 'One', 'Zero', '@EntryPoint', 'within', 'apply', 'controlled', 'adjoint'
+  ];
+  
+  // First, we'll standardize the formatting to make fragments easier to detect
+  let standardized = contentString;
+  
+  // Pre-processing: detect loose Q# code fragments that aren't wrapped in code blocks
+  // These are common in RAG mode between code blocks
+  const looseQSharpRegex = /(namespace\s+\w+|open\s+Microsoft\.Quantum\.\w+|operation\s+\w+)/g;
+  standardized = standardized.replace(looseQSharpRegex, (match, p1, offset) => {
+    // Vérifier si ce match est déjà dans un bloc de code
+    const preContent = standardized.substring(Math.max(0, offset - 50), offset);
+    const postContent = standardized.substring(offset, Math.min(standardized.length, offset + 200));
+    
+    // Ne pas remplacer si déjà dans un bloc de code
+    if (preContent.includes('```') && !preContent.includes('```\n')) return match;
+    if (postContent.includes('```') && !postContent.includes('\n```')) return match;
+    
+    // Estimation du début et fin de ce fragment
+    const lines = standardized.substring(offset).split('\n');
+    let endIdx = 0;
+    
+    // Chercher jusqu'à 5 lignes pour déterminer la taille du fragment
+    for (let i = 0; i < Math.min(5, lines.length); i++) {
+      if (qsharpKeywords.some(kw => lines[i].includes(kw))) {
+        endIdx = i + 1;
+      }
+    }
+    
+    if (endIdx > 0) {
+      const fragment = lines.slice(0, endIdx).join('\n');
+      return `\`\`\`qsharp\n${fragment}\`\`\``;
+    }
+    
+    return match;
+  });
+  
+  // Convert all ```text blocks that contain Q# code to ```qsharp
+  standardized = standardized.replace(/```text\n([\s\S]*?)```/g, (match, codeContent) => {
+    if (qsharpKeywords.some(keyword => codeContent.includes(keyword))) {
+      return `\`\`\`qsharp\n${codeContent}\`\`\``;
+    }
+    return match;
+  });
+  
+  // Convert all ``` blocks (no language specified) that contain Q# code to ```qsharp
+  standardized = standardized.replace(/```\n([\s\S]*?)```/g, (match, codeContent) => {
+    if (qsharpKeywords.some(keyword => codeContent.includes(keyword))) {
+      return `\`\`\`qsharp\n${codeContent}\`\`\``;
+    }
+    return match;
+  });
+  
+  // Now parse the content line by line to merge adjacent blocks
+  const lines = standardized.split('\n');
+  const result: string[] = [];
+  const allCodeBlocks: { start: number; end: number; content: string[]; isQSharp: boolean }[] = [];
+  
+  // First pass: identify all code blocks
+  let inCodeBlock = false;
+  let currentCodeStart = -1;
+  let currentLanguage = '';
+  let currentContent: string[] = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Detect start of a code block
+    const codeBlockStartMatch = line.match(/^```(\w*)$/);
+    if (codeBlockStartMatch && !inCodeBlock) {
+      inCodeBlock = true;
+      currentCodeStart = i;
+      currentLanguage = codeBlockStartMatch[1];
+      currentContent = [lines[i]];
+      continue;
+    }
+    
+    // Detect end of a code block
+    if (line === '```' && inCodeBlock) {
+      inCodeBlock = false;
+      currentContent.push(lines[i]);
+      
+      // Amélioration de la détection Q# - vérifier le contenu complet pour des mots-clés
+      const contentText = currentContent.join('\n');
+      const isQSharpContent = 
+        currentLanguage === 'qsharp' || 
+        qsharpKeywords.some(keyword => contentText.includes(keyword)) || 
+        (contentText.includes('namespace') && contentText.includes('{')) ||
+        (contentText.includes('open Microsoft') && contentText.includes(';'));
+      
+      allCodeBlocks.push({
+        start: currentCodeStart,
+        end: i,
+        content: currentContent,
+        isQSharp: isQSharpContent
+      });
+      
+      currentContent = [];
+      continue;
+    }
+    
+    // Inside code block
+    if (inCodeBlock) {
+      currentContent.push(lines[i]);
+    }
+  }
+  
+  // Handle any unclosed blocks
+  if (inCodeBlock && currentContent.length > 0) {
+    allCodeBlocks.push({
+      start: currentCodeStart,
+      end: lines.length - 1,
+      content: currentContent,
+      isQSharp: currentLanguage === 'qsharp' || 
+               (currentLanguage === 'text' && 
+                qsharpKeywords.some(keyword => currentContent.join('\n').includes(keyword)))
+    });
+  }
+  
+  // Second pass: merge adjacent QSharp blocks
+  const mergedBlocks: { start: number; end: number; content: string[] }[] = [];
+  let currentMergedBlock: { start: number; end: number; content: string[] } | null = null;
+  
+  // Fonction pour vérifier si deux blocs de code Q# sont liés conceptuellement
+  const areBlocksRelated = (block1Content: string[], block2Content: string[]): boolean => {
+    const content1 = block1Content.join('\n');
+    const content2 = block2Content.join('\n');
+    
+    // Vérifier si les blocs contiennent des éléments complémentaires (namespace et open par exemple)
+    const hasNamespace = content1.includes('namespace') || content2.includes('namespace');
+    const hasOpen = content1.includes('open Microsoft.Quantum') || content2.includes('open Microsoft.Quantum');
+    const hasOperation = content1.includes('operation') || content2.includes('operation');
+    
+    // Si les deux blocs font partie de la même structure logique de code Q#
+    return (hasNamespace && hasOpen) || (hasOpen && hasOperation);
+  };
+  
+  for (let i = 0; i < allCodeBlocks.length; i++) {
+    const block = allCodeBlocks[i];
+    
+    // If this is a QSharp block and we're not currently merging, start a new merged block
+    if (block.isQSharp && !currentMergedBlock) {
+      currentMergedBlock = {
+        start: block.start,
+        end: block.end,
+        content: block.content
+      };
+      continue;
+    }
+    
+    // If this is a QSharp block and we're currently merging, merge with the current block
+    if (block.isQSharp && currentMergedBlock) {
+      // Check if blocks are adjacent or very close (max 5 lines between - augmenté pour plus de flexibilité)
+      const gapSize = block.start - currentMergedBlock.end - 1;
+      const areRelated = areBlocksRelated(currentMergedBlock.content, block.content);
+      
+      // Augmenter la distance maximale à 5 lignes et vérifier si les blocs sont liés
+      if (gapSize <= 5 || areRelated) {
+        // Add any lines between the blocks
+        for (let j = currentMergedBlock.end + 1; j < block.start; j++) {
+          if (lines[j].trim() && !lines[j].trim().startsWith('```')) {
+            currentMergedBlock.content.push(lines[j]);
+          }
+        }
+        
+        // Remove the ```qsharp header from the second block if it exists
+        const secondBlockContent = block.content.slice(0);
+        if (secondBlockContent[0]?.trim().startsWith('```')) {
+          secondBlockContent.shift();
+        }
+        
+        // Remove the ``` footer from the first block if it exists
+        if (currentMergedBlock.content[currentMergedBlock.content.length - 1]?.trim() === '```') {
+          currentMergedBlock.content.pop();
+        }
+        
+        // Merge the blocks
+        currentMergedBlock.content.push(...secondBlockContent);
+        currentMergedBlock.end = block.end;
+      } else {
+        // Gap is too large, finish the current merged block and start a new one
+        mergedBlocks.push(currentMergedBlock);
+        currentMergedBlock = {
+          start: block.start,
+          end: block.end,
+          content: block.content
+        };
+      }
+      continue;
+    }
+    
+    // If this is not a QSharp block
+    if (!block.isQSharp) {
+      // If we're currently merging, finish the current block
+      if (currentMergedBlock) {
+        mergedBlocks.push(currentMergedBlock);
+        currentMergedBlock = null;
+      }
+      
+      // Add this block as is
+      mergedBlocks.push({
+        start: block.start,
+        end: block.end,
+        content: block.content
+      });
+    }
+  }
+  
+  // Add the last merged block if there is one
+  if (currentMergedBlock) {
+    mergedBlocks.push(currentMergedBlock);
+  }
+  
+  // Third pass: reconstruct the content with merged blocks
+  let currentIndex = 0;
+  
+  for (const block of mergedBlocks) {
+    // Add any content before this block
+    for (let i = currentIndex; i < block.start; i++) {
+      result.push(lines[i]);
+    }
+    
+    // Ensure merged QSharp blocks have the correct language tag
+    if (block.content[0]?.trim().startsWith('```') && 
+        !block.content[0].trim().includes('qsharp') && 
+        qsharpKeywords.some(keyword => block.content.join('\n').includes(keyword))) {
+      block.content[0] = '```qsharp';
+    }
+    
+    // Add the block content
+    result.push(...block.content);
+    
+    // Update the current index
+    currentIndex = block.end + 1;
+  }
+  
+  // Add any content after the last block
+  for (let i = currentIndex; i < lines.length; i++) {
+    result.push(lines[i]);
+  }
+  
+  return result.join('\n');
+};
+
 // Define the code sidebar context type
 interface CodeSidebarContextType {
   showCodeSidebar: boolean;
@@ -35,6 +296,7 @@ interface MessageProps {
     sources?: SourceType[];
     autoActivatedRAG?: boolean;
     conversationContext?: Array<{ role: string; content: string }>;
+    attachedFile?: { name: string; size: number };
   };
   theme?: 'dark' | 'light';
   onRegenerate?: (messageId: string) => void;
@@ -82,6 +344,17 @@ const safeClipboardCopy = async (text: string): Promise<boolean> => {
 const CodeBlock: React.FC<CodeBlockProps> = ({ language, value, index, theme = 'dark' }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Determine the correct language
+  const detectedLanguage = React.useMemo(() => {
+    // Override text blocks that contain Q# code
+    if ((language === 'text' || !language) && 
+        (value.includes('Microsoft.Quantum') || 
+         value.includes('namespace') && value.includes('operation'))) {
+      return 'qsharp';
+    }
+    return language;
+  }, [language, value]);
 
   const { setShowCodeSidebar, setSidebarCode } = React.useContext(CodeSidebarContext);
 
@@ -96,9 +369,8 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ language, value, index, theme = '
       console.error('Copy error:', err);
     }
   };
-
   const handleDownload = () => {
-    const fileExtension = getFileExtension(language);
+    const fileExtension = getFileExtension(detectedLanguage);
     const fileName = `code-snippet-${index}.${fileExtension}`;
 
     const blob = new Blob([value], { type: 'text/plain' });
@@ -113,14 +385,12 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ language, value, index, theme = '
   };
 
   const handleOpenInSidebar = () => {
-    const fileExtension = getFileExtension(language);
+    const fileExtension = getFileExtension(detectedLanguage);
     const fileName = `code-snippet-${index}.${fileExtension}`;
 
     setSidebarCode({ code: value, language: language || 'text', fileName });
     setShowCodeSidebar(true);
-  };
-
-  const getFileExtension = (lang: string): string => {
+  };  const getFileExtension = (lang: string): string => {
     const extensionMap: Record<string, string> = {
       javascript: 'js',
       typescript: 'ts',
@@ -139,6 +409,11 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ language, value, index, theme = '
       ruby: 'rb',
       go: 'go',
       rust: 'rs',
+      // Support pour les langages spécialisés
+      qiskit: 'py',
+      quantum: 'py',
+      qsharp: 'qs',
+      'q#': 'qs',
       swift: 'swift',
       kotlin: 'kt',
       shell: 'sh',
@@ -152,8 +427,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ language, value, index, theme = '
     return extensionMap[lang?.toLowerCase()] || 'txt';
   };
 
-  return (
-    <div className="my-4 first:mt-0 last:mb-0 w-full">
+  return (    <div className="my-4 first:mt-0 last:mb-0 w-full">
       <div className={`rounded-xl border overflow-hidden backdrop-blur-sm transition-all duration-300
         ${theme === 'dark' 
           ? 'border-gray-700 shadow-lg shadow-cyan-900/10' 
@@ -166,7 +440,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ language, value, index, theme = '
             ${theme === 'dark' 
               ? 'bg-cyan-900/40 text-cyan-300 border border-cyan-800/40' 
               : 'bg-cyan-100 text-cyan-700 border border-cyan-200'}`}>
-            {language || 'text'}
+            {detectedLanguage || 'text'}
           </span>
           <div className="flex space-x-1">
             <button 
@@ -299,7 +573,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
 
   const isShortMessage = !isAI && message.content && message.content.length < 50;
 
-  const timestamp = new Date(message.timestamp);
+  const timestamp = new Date(message.timestamp ?? Date.now());
   const formattedDate = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const handleCopyMessage = async () => {
@@ -410,16 +684,18 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       </span>
     );
   };
-
   const processMessageContent = () => {
     if (!message.content) {
       return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content || ''}</ReactMarkdown>;
     }
+    
+    // Pre-process the content to merge adjacent QSharp code fragments
+    const processedContent = mergeQSharpFragments(message.content);
 
     if (!message.sources || message.sources.length === 0) {
-      return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
+      return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{processedContent}</ReactMarkdown>;
     }
-
+    
     // Fonction pour déterminer si une ligne est uniquement une référence source
     const isSourceReferenceLine = (line: string) => {
       // Vérifie si la ligne contient uniquement une référence comme [1], [2], etc.
@@ -459,9 +735,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       }
 
       return <span key={`plain-${index}`}>{`[${refNumber}]`}</span>;
-    };
-
-    const paragraphs = message.content.split('\n');
+    };    const paragraphs = processedContent.split('\n');
     const processedParagraphs = paragraphs.map((paragraph, paragraphIndex) => {
       // Ignorer les lignes qui sont uniquement des références sources
       if (isSourceReferenceLine(paragraph)) {
@@ -587,9 +861,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
         // Otherwise use p tag as expected for normal paragraphs
         <p {...props}>{children}</p>
       );
-    },
-
-    code: ({ inline, className, children, ...props }: CodeProps) => {
+    },    code: ({ inline, className, children, ...props }: CodeProps) => {
       const match = /language-(\w+)/.exec(className || '');
       const language = match ? match[1] : '';
       const codeIndex = inline ? '-1' : `${Math.random().toString(36).substring(2, 11)}`;
@@ -597,10 +869,26 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       // Ne pas utiliser l'élément div pour les blocs de code
       // à la place, retourner directement le CodeBlock pour les non-inline
       if (!inline) {
+        // For Q# code, do special processing to make sure language is correctly identified
+        let codeLanguage = language;
+        const codeValue = String(children || '').replace(/\n$/, '');
+        
+        // Auto-detect Q# language if needed
+        if ((codeLanguage === 'text' || !codeLanguage) && codeValue) {
+          const qsharpKeywords = [
+            'Microsoft.Quantum', 'namespace', 'operation', 'function', 
+            'open Microsoft.Quantum', 'MeasureWithProbability'
+          ];
+          
+          if (qsharpKeywords.some(keyword => codeValue.includes(keyword))) {
+            codeLanguage = 'qsharp';
+          }
+        }
+        
         return (
           <CodeBlock 
-            language={language}
-            value={String(children || '').replace(/\n$/, '')}
+            language={codeLanguage}
+            value={codeValue}
             index={codeIndex}
             theme={theme}
           />

@@ -74,9 +74,8 @@ export const addMessageToChatSession = (sessionId: string, message: Message): Ch
   if (index !== -1) {
     sessions[index].messages.push(message);
     sessions[index].updatedAt = Date.now();
-    
-    // Si c'est le premier message utilisateur, définir le titre
-    if (message.role === 'user' && sessions[index].messages.filter(m => m.role === 'user').length === 1) {
+      // Si c'est le premier message utilisateur, définir le titre
+    if (message.role === 'user' && sessions[index].messages.filter((m: Message) => m.role === 'user').length === 1) {
       sessions[index].title = message.content.substring(0, 30) + (message.content.length > 30 ? '...' : '');
     }
     

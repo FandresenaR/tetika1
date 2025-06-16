@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Détecteur de Code Qiskit - Mode RAG</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-blue-800">Détecteur de Code Qiskit pour mode RAG</h1>
+            <p class="text-gray-600 mt-2">Testez la détection automatique et la correction de code quantique Qiskit</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Section Entrée -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4 text-blue-700">Entrez votre texte avec du code Qiskit</h2>
+                <textarea id="input-text" class="w-full h-64 p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                    placeholder="Collez ici votre texte contenant du code Qiskit..."></textarea>
+                
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <button id="clear-btn" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">Effacer</button>
+                    <button id="load-example" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Charger exemple</button>
+                    <button id="detect-btn" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Détecter le code</button>
+                </div>
+                
+                <div id="loading" class="hidden mt-4 text-center">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                    <p class="mt-2 text-gray-600">Analyse en cours...</p>
+                </div>
+            </div>
+
+            <!-- Section Résultat -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4 text-blue-700">Résultat avec code formaté</h2>
+                <div id="result-container" class="w-full h-64 p-3 border border-gray-300 rounded-md overflow-auto bg-gray-50">
+                    <div id="result-text" class="prose max-w-none">
+                        <p class="text-gray-500 italic">Le résultat de la détection apparaîtra ici...</p>
+                    </div>
+                </div>
+                
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <button id="copy-result" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Copier le résultat</button>
+                    <button id="pipeline-btn" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700">Pipeline complet</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section Informations -->
+        <div class="mt-8 bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold mb-4 text-blue-700">À propos du détecteur de code Qiskit</h2>
+            <div class="prose max-w-none">
+                <p>Ce détecteur analyse automatiquement le texte pour identifier et formater correctement le code Qiskit (IBM Quantum Computing Framework) dans les réponses du mode RAG (Retrieval Augmented Generation).</p>
+                <h3 class="mt-4">Fonctionnalités :</h3>
+                <ul class="list-disc pl-6">
+                    <li>Détection des importations, circuits quantiques et opérations Qiskit</li>
+                    <li>Correction automatique d'erreurs syntaxiques courantes</li>
+                    <li>Formatage du code en blocs Markdown <code>```python</code></li>
+                    <li>Support pour les commentaires descriptifs et exemples complets</li>
+                </ul>
+                <h3 class="mt-4">Exemples de code détectable :</h3>
+                <pre><code class="language-python">from qiskit import QuantumCircuit
+qc = QuantumCircuit(2)
+qc.h(0)
+qc.cx(0, 1)
+qc.measure_all()</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Variables
+            const inputText = document.getElementById('input-text');
+            const resultText = document.getElementById('result-text');
+            const detectBtn = document.getElementById('detect-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            const loadExampleBtn = document.getElementById('load-example');
+            const copyResultBtn = document.getElementById('copy-result');
+            const pipelineBtn = document.getElementById('pipeline-btn');
+            const loading = document.getElementById('loading');
+
+            // Exemple de code Qiskit
+            const exampleCode = `Voici un exemple d'utilisation de Qiskit pour créer un circuit de téléportation quantique:
+
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, Aer, execute
+from qiskit.visualization import plot_histogram
+
+# Création des registres
+qr = QuantumRegister(3, 'q')    # 3 qubits
+crz = ClassicalRegister(1, 'crz')  # 1 bit classique pour la correction Z
+crx = ClassicalRegister(1, 'crx')  # 1 bit classique pour la correction X
+circuit = QuantumCircuit(qr, crz, crx)
+
+# Préparation de l'état à téléporter (qubit 0)
+circuit.h(qr[0])
+circuit.z(qr[0])
+
+# Création de l'intrication entre les qubits 1 et 2
+circuit.h(qr[1])
+circuit.cx(qr[1], qr[2])
+
+# Téléportation
+circuit.cx(qr[0], qr[1])
+circuit.h(qr[0])
+circuit.measure(qr[0], crz)
+circuit.measure(qr[1], crx)
+
+# Correction selon les résultats de mesure
+circuit.z(qr[2]).c_if(crz, 1)
+circuit.x(qr[2]).c_if(crx, 1)
+
+# Exécution sur simulateur
+simulator = Aer.get_backend('qasm_simulator')
+job = execute(circuit, simulator, shots=1024)
+result = job.result()
+counts = result.get_counts(circuit)
+
+print("Résultats de la téléportation :", counts)`;
+
+            // Fonctions
+            function detectQiskitCode() {
+                const text = inputText.value;
+                if (!text.trim()) return;
+
+                loading.classList.remove('hidden');
+                
+                fetch('/api/detect-qiskit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: text })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Afficher le résultat avec formatage Markdown
+                    resultText.innerHTML = marked.parse(data.enhanced);
+                    
+                    // Appliquer la coloration syntaxique
+                    document.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightElement(block);
+                    });
+                })
+                .catch(error => {
+                    resultText.innerHTML = `<p class="text-red-500">Erreur: ${error.message}</p>`;
+                })
+                .finally(() => {
+                    loading.classList.add('hidden');
+                });
+            }
+
+            function useCompletePipeline() {
+                const text = inputText.value;
+                if (!text.trim()) return;
+
+                loading.classList.remove('hidden');
+                
+                fetch('/api/enhance-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: text })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Afficher le résultat avec formatage Markdown
+                    resultText.innerHTML = marked.parse(data.enhanced);
+                    
+                    // Appliquer la coloration syntaxique
+                    document.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightElement(block);
+                    });
+                })
+                .catch(error => {
+                    resultText.innerHTML = `<p class="text-red-500">Erreur: ${error.message}</p>`;
+                })
+                .finally(() => {
+                    loading.classList.add('hidden');
+                });
+            }
+
+            // Événements
+            detectBtn.addEventListener('click', detectQiskitCode);
+            
+            pipelineBtn.addEventListener('click', useCompletePipeline);
+            
+            clearBtn.addEventListener('click', () => {
+                inputText.value = '';
+                resultText.innerHTML = '<p class="text-gray-500 italic">Le résultat de la détection apparaîtra ici...</p>';
+            });
+            
+            loadExampleBtn.addEventListener('click', () => {
+                inputText.value = exampleCode;
+            });
+            
+            copyResultBtn.addEventListener('click', () => {
+                const textToCopy = resultText.textContent;
+                navigator.clipboard.writeText(textToCopy)
+                    .then(() => {
+                        const originalText = copyResultBtn.textContent;
+                        copyResultBtn.textContent = 'Copié !';
+                        setTimeout(() => {
+                            copyResultBtn.textContent = originalText;
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Erreur lors de la copie:', err);
+                    });
+            });
+        });
+    </script>
+</body>
+</html>

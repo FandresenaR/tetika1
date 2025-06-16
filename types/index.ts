@@ -17,6 +17,7 @@ export interface Message {
     content: string; // Contenu du fichier encodé en base64 ou texte brut
   };
   autoActivatedRAG?: boolean; // Indique si le mode RAG a été activé automatiquement
+  postProcess?: (content: string) => string; // Fonction de post-traitement pour les réponses
 }
 
 export interface ChatSession {

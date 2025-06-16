@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Message, ChatMode } from '@/types';
+import { Message, ChatMode } from '@/types/index';
 import { callAIModel } from '@/lib/api';
 import { enhanceWithRAG } from '@/lib/rag-helper';
 import { extractMistralResponse, extractFromTruncatedResponse } from '@/lib/llm-utils';
+import { enhanceQuantumRAG, containsQuantumCode } from '@/lib/quantum-rag-integrator';
 
 interface Source {
   title: string;
@@ -30,9 +31,9 @@ type ContentPart = TextContent | ImageContent;
 // Helper function to generate a unique ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const { messages, model, mode, hasAttachedFile, apiKeys } = await request.json();
+    const { messages, model, mode, hasAttachedFile, apiKeys } = await req.json();
     
     // Vérifier que les données requises sont présentes
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -128,15 +129,15 @@ Si tu as les informations nécessaires, ignore cette instruction et réponds nor
             // Faire une première requête pour vérifier si le modèle a besoin d'informations externes
           console.log("Vérification si le modèle possède les informations nécessaires...");
           const checkResponse = await callAIModel(model, messagesForAI, false, apiKeys);
-          
-          // Extraire la réponse pour vérifier si RAG est nécessaire
+            // Extraire la réponse pour vérifier si RAG est nécessaire
           let checkResponseText = "";
           if (checkResponse?.choices?.[0]?.message?.content) {
-            checkResponseText = checkResponse.choices[0].message.content;
-          } else if (checkResponse?.message?.content) {
-            checkResponseText = checkResponse.message.content;
-          } else if (checkResponse?.content) {
-            checkResponseText = checkResponse.content;
+            checkResponseText = checkResponse.choices[0].message.content;          } else if (checkResponse && typeof checkResponse === 'object' && 'message' in checkResponse && 
+              typeof checkResponse.message === 'object' && checkResponse.message !== null && 'content' in checkResponse.message) {
+            checkResponseText = (checkResponse.message as { content: string }).content;
+          } else if (checkResponse && typeof checkResponse === 'object' && 'content' in checkResponse) {
+            // Utiliser l'opérateur 'in' pour vérifier si la propriété existe avant d'y accéder
+            checkResponseText = (checkResponse as { content: string }).content;
           } else if (typeof checkResponse === 'string') {
             checkResponseText = checkResponse;
           }
@@ -250,25 +251,43 @@ ${ragContext}`,
           mode: mode as ChatMode
         });
       }
-    }    // Appeler le modèle d'IA avec le message enrichi et les clés API fournies par le client
+    }
+
+    // Vérifier la présence de la clé API avant d'appeler OpenRouter
+    if (model.provider === 'openrouter') {
+      const openRouterApiKey = process.env.OPENROUTER_API_KEY || req.headers.get('x-openrouter-api-key');
+      
+      if (!openRouterApiKey) {
+        return new Response(
+          JSON.stringify({ 
+            error: "Clé API OpenRouter manquante. Veuillez fournir une clé API valide." 
+          }),
+          { status: 401 }
+        );
+      }
+      
+      // Ajouter la clé API aux options
+      apiKeys.openrouter = openRouterApiKey;
+    }
+
+    // Appeler le modèle d'IA avec le message enrichi et les clés API fournies par le client
     const apiResponse = await callAIModel(model, messagesForAI, false, apiKeys);
       // Extract the AI response content more safely
     let aiResponse = "";
     try {
       if (apiResponse?.choices?.[0]?.message?.content) {
         // Standard OpenRouter/OpenAI format
-        aiResponse = apiResponse.choices[0].message.content;
-      } else if (apiResponse?.choices?.[0]?.delta?.content) {
+        aiResponse = apiResponse.choices[0].message.content;      } else if (apiResponse?.choices?.[0]?.delta && typeof apiResponse.choices[0].delta === 'object' && 
+                 'content' in apiResponse.choices[0].delta) {
         // Format used in some streaming responses
-        aiResponse = apiResponse.choices[0].delta.content;
+        aiResponse = (apiResponse.choices[0].delta as { content: string }).content;
       } else if (apiResponse?.choices?.[0]?.text) {
-        // Some APIs might use 'text' instead of 'message.content'
-        aiResponse = apiResponse.choices[0].text;      } else if (apiResponse?.message?.content) {
+        // Some APIs might use 'text' instead of 'message.content'        aiResponse = apiResponse.choices[0].text;      
+      } else if (apiResponse?.message && typeof apiResponse.message === 'object' && 'content' in apiResponse.message) {
         // Alternative format some providers might use
-        aiResponse = apiResponse.message.content;
-      } else if (apiResponse?.content) {
+        aiResponse = (apiResponse.message as { content: string }).content;      } else if (apiResponse && typeof apiResponse === 'object' && 'content' in apiResponse) {
         // Simplest fallback
-        aiResponse = apiResponse.content;
+        aiResponse = (apiResponse as { content: string }).content;
       } else if (typeof apiResponse === 'string') {
         // For providers that might just return a string
         aiResponse = apiResponse;} else {
@@ -348,12 +367,30 @@ ${ragContext}`,
             aiResponse = "Je suis désolé, il y a eu un problème avec le modèle d'intelligence artificielle. Veuillez réessayer.";
           }
         }
-      }
-    } catch (extractError) {
+      }    } catch (extractError) {
       console.error("Error extracting AI response:", extractError);
       aiResponse = "Une erreur s'est produite lors du traitement de la réponse. Veuillez réessayer.";
     }
-      // Return the AI response with sources if in RAG mode
+    
+    // Détection et amélioration du code quantique dans les réponses
+    try {
+      // Vérifier si la réponse peut contenir du code quantique
+      if (containsQuantumCode(aiResponse)) {
+        console.log("Code quantique détecté, amélioration du formatage...");
+        // Appliquer les détecteurs de code quantique à la réponse
+        const enhancedResponse = enhanceQuantumRAG(aiResponse);
+        // Utiliser la réponse améliorée si elle est différente
+        if (enhancedResponse !== aiResponse) {
+          console.log("Code quantique amélioré avec succès");
+          aiResponse = enhancedResponse;
+        }
+      }
+    } catch (quantumError) {
+      console.error("Erreur lors de l'amélioration du code quantique:", quantumError);
+      // Ne pas modifier la réponse en cas d'erreur dans le détecteur
+    }
+    
+    // Return the AI response with sources if in RAG mode
     return NextResponse.json({
       message: aiResponse,
       sources: currentMode === 'rag' ? sources : [],

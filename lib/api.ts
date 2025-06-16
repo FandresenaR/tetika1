@@ -1,8 +1,7 @@
-import axios, { AxiosError } from 'axios';
-import { AIModel, Message } from '../types';
+import { AIModel, Message } from '../types/index';
 
 // Helper function to extract content from truncated Mistral model responses
-function extractContentFromTruncatedResponse(responseText: string): string | null {
+export function extractContentFromTruncatedResponse(responseText: string): string | null {
   // Try several pattern matching approaches
   const patterns = [
     /"content"\s*:\s*"([^"]+)"/,       // Standard JSON format
@@ -81,312 +80,73 @@ export function isModelFree(modelId: string) {
 }
 
 // API OpenRouter
-export async function callOpenRouterAPI(modelId: string, messages: Message[], stream = false, clientApiKey?: string) {
-  // Utiliser la clé API fournie par le client si elle existe, sinon utiliser celle des paramètres du serveur
-  let OPENROUTER_API_KEY = '';
+// Define interfaces for OpenRouter API interactions
+interface OpenRouterMessage {
+  role: string;
+  content: string;
+}
+
+interface OpenRouterPayload {
+  model: string;
+  messages: OpenRouterMessage[];  stream?: boolean;
+  [key: string]: unknown; // For any additional parameters
+}
+
+interface OpenRouterOptions {
+  apiKey?: string;
+  payload: OpenRouterPayload;
+  referer?: string;
+  title?: string;
+}
+
+interface OpenRouterResponseChoice {
+  message?: {
+    content?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+interface OpenRouterResponse {
+  choices?: OpenRouterResponseChoice[];
+  [key: string]: unknown; // Allow other properties that might be returned
+}
+
+export async function callOpenRouterAPI(options: OpenRouterOptions): Promise<OpenRouterResponse> {
+  // Récupérer la clé API depuis les variables d'environnement en priorité
+  const apiKey = process.env.OPENROUTER_API_KEY || options.apiKey;
   
-  if (clientApiKey) {
-    // Utiliser la clé fournie par le client
-    OPENROUTER_API_KEY = clientApiKey;
-  } else {
-    // Fallback aux clés du serveur
-    const apiKeys = getApiKeys();
-    OPENROUTER_API_KEY = apiKeys.openrouter;
+  if (!apiKey) {
+    throw new Error("Erreur d'authentification: Clé API OpenRouter non fournie");
   }
-  
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`,
+    'HTTP-Referer': options.referer || 'https://your-app-domain.com', // Requis par OpenRouter
+    'X-Title': options.title || 'Your Application Name' // Recommandé par OpenRouter
+  };
+
   try {
-    console.log('Calling OpenRouter API with model:', modelId);
-      // Check if API key exists and is valid
-    if (!OPENROUTER_API_KEY) {
-      console.error('No OpenRouter API key provided');
-      throw new Error('OpenRouter API key not configured. Please add your API key in settings. (Clé API OpenRouter non configurée. Veuillez ajouter votre clé API dans les paramètres.)');
-    }
-    
-    // Validate API key format
-    if (OPENROUTER_API_KEY && !OPENROUTER_API_KEY.startsWith('sk-or-')) {
-      console.error('OpenRouter API key format appears invalid');
-      throw new Error('OpenRouter API key format appears invalid. Keys should start with "sk-or-"');
-    }
-    
-    // Configuration des headers de base
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://tetika.app',
-      'X-Title': 'Tetika AI Chat',
-    };
-    
-    // Ajouter l'en-tête d'autorisation si une clé API est disponible
-    if (OPENROUTER_API_KEY) {
-      headers['Authorization'] = `Bearer ${OPENROUTER_API_KEY}`;
-    } else {
-      console.warn('No OpenRouter API key found. This may cause authentication issues.');
-    }
-    
-    // Nettoyage et validation des messages
-    let cleanMessages = messages
-      .filter(msg => msg.role && msg.content) // Filtrer les messages invalides
-      .map(msg => {
-        // S'assurer que le rôle est valide
-        let role = msg.role;
-        if (!['user', 'assistant', 'system'].includes(role)) {
-          role = 'user'; // Fallback par défaut
-        }
-        
-        // Limiter la longueur des messages pour éviter les erreurs
-        const content = typeof msg.content === 'string' 
-          ? msg.content.slice(0, 32000) // Limiter pour les modèles avec des limites plus strictes
-          : 'Message content invalid';
-          
-        return { role, content };
-      });
-    
-    // S'assurer qu'il y a au moins un message utilisateur
-    if (cleanMessages.length === 0) {
-      cleanMessages = [{ role: 'user', content: 'Hello' }];
-    }
-    
-    // Si le premier message n'est pas de type 'system' ou 'user', ajouter un message système par défaut
-    if (cleanMessages[0].role === 'assistant') {
-      cleanMessages.unshift({
-        role: 'system',
-        content: 'You are a helpful assistant.'
-      });
-    }
-    
-    // Créer un payload simple et robuste
-    const payload = {
-      model: modelId,
-      messages: cleanMessages,
-      temperature: 0.7,
-      max_tokens: 800,
-      stream: stream
-    };      // Logging du payload pour le diagnostic (sans imprimer toute la conversation)
-    console.log('OpenRouter payload structure:', { 
-      model: payload.model,
-      messageCount: payload.messages.length,
-      firstMessageRole: payload.messages[0].role,
-      temperature: payload.temperature,
-      max_tokens: payload.max_tokens
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(options.payload)
     });
-      // Faire la requête en utilisant uniquement les options nécessaires
-    let response;
-    try {
-      response = await axios({
-        method: 'post',
-        url: 'https://openrouter.ai/api/v1/chat/completions',
-        headers: headers,        data: payload,
-        timeout: 60000, // 60 secondes
-        transformResponse: [(data) => {
-          // Prevent JSON parse errors by capturing the raw response
-          return { rawData: data };
-        }]
-      });
-      
-      // Parse the response safely
-      let parsedData;
-      try {
-        if (response.data?.rawData) {
-          parsedData = JSON.parse(response.data.rawData);
-          response.data = parsedData;
-        }
-      } catch (parseError) {
-        console.error('Error parsing OpenRouter response:', parseError);
-        console.log('Raw response (partial):', response.data?.rawData?.substring(0, 500));
-        
-        // Try to extract content from the raw response
-        let content = null;
-        
-        if (typeof response.data?.rawData === 'string') {
-          // Special handling for Mistral models which may have truncated responses
-          if (modelId.includes('mistral')) {
-            const mistralContentMatch = extractContentFromTruncatedResponse(response.data.rawData);
-            if (mistralContentMatch) {
-              content = mistralContentMatch;
-              console.log("Successfully extracted content from Mistral response");
-            }
-          }
-          
-          // If no content yet, try standard pattern matching
-          if (!content) {
-            // Look for content field in the raw string
-            const contentMatch = response.data.rawData.match(/"content"\s*:\s*"([^"]+)"/);
-            const deltaContentMatch = response.data.rawData.match(/"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/);
-            
-            if (contentMatch && contentMatch[1]) {
-              content = contentMatch[1];
-            } else if (deltaContentMatch && deltaContentMatch[1]) {
-              // Special handling for DeepSeek models that use delta.content format
-              content = deltaContentMatch[1];
-            }
-          }
-          
-          // If we still don't have content, try to repair truncated JSON
-          if (!content) {
-            try {
-              // Add closing brackets to potentially truncated JSON
-              let fixedJson = response.data.rawData;
-              if (!fixedJson.endsWith('}')) {
-                fixedJson += '"}}}]}';
-              }
-              const partialData = JSON.parse(fixedJson);
-              
-              // Try to extract content from various possible locations
-              if (partialData?.choices?.[0]?.message?.content) {
-                content = partialData.choices[0].message.content;
-              } else if (partialData?.choices?.[0]?.delta?.content) {
-                content = partialData.choices[0].delta.content;
-              }
-            } catch (repairError) {
-              console.error('Failed to repair truncated JSON:', repairError);
-            }
-          }
-        }
-        
-        // Return a synthetic response with whatever we could extract
-        response.data = {
-          choices: [{
-            message: {
-              content: content || "Erreur de communication avec le modèle. Réponse reçue mais incomplète."
-            }
-          }]
-        };
-      }
-    } catch (requestError) {
-      // Will be handled in the outer catch block
-      throw requestError;
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      const errorMessage = `Erreur OpenRouter API: ${response.status} ${response.statusText} - ${
+        errorData.error?.message || JSON.stringify(errorData)
+      }`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
     }
 
-    console.log('OpenRouter API response status:', response.status);
-    
-    // Log the response structure without sensitive information
-    console.log('OpenRouter response structure:', {
-      status: response.status,
-      hasData: !!response.data,
-      hasChoices: !!response.data?.choices,
-      choicesLength: response.data?.choices?.length,
-      firstChoice: response.data?.choices?.[0] ? 'present' : 'missing',
-      // Add more detailed debug info
-      dataKeys: response.data ? Object.keys(response.data) : [],
-      responseContentType: response.headers['content-type'],
-    });
-      // Enhanced validation for response data
-    if (!response.data) {
-      console.error('OpenRouter returned empty response');
-      return {
-        choices: [{
-          message: {
-            content: "Erreur: Réponse vide reçue du modèle."
-          }
-        }]
-      };
-    }
-    
-    // Handle different response formats more gracefully
-    if (!response.data.choices || !response.data.choices.length) {
-      console.error('Non-standard OpenRouter response format:', JSON.stringify(response.data).substring(0, 500));
-      
-      // Check if the response contains an error message from OpenRouter
-      if (response.data.error) {
-        // Extract the error message
-        const errorMessage = typeof response.data.error === 'string' 
-          ? response.data.error 
-          : (response.data.error.message || 'Unknown error from OpenRouter');
-        
-        console.error('OpenRouter returned an error:', errorMessage, 'Response keys:', Object.keys(response.data).join(', '));
-        
-        return {
-          choices: [{
-            message: {
-              content: `Erreur du modèle: ${errorMessage}`
-            }
-          }]
-        };
-      }
-      
-      // Try to extract message content from different possible response structures
-      if (response.data.message?.content) {
-        // Create a synthetic response that matches expected format
-        return {
-          choices: [{
-            message: {
-              content: response.data.message.content
-            }
-          }]
-        };
-      } 
-      // Check for completion/text fields which some API versions might use
-      else if (response.data.completion || response.data.text) {
-        return {
-          choices: [{
-            message: {
-              content: response.data.completion || response.data.text
-            }
-          }]
-        };
-      }
-      // Check if the entire response might be the message itself
-      else if (typeof response.data === 'string') {
-        return {
-          choices: [{
-            message: {
-              content: response.data
-            }
-          }]
-        };
-      }
-      // Check if there's an object with content directly
-      else if (response.data.content) {
-        return {
-          choices: [{
-            message: {
-              content: response.data.content
-            }
-          }]
-        };
-      }
-      
-      // If there's a response but no usable message content
-      throw new Error(`Invalid response format from OpenRouter: Missing choices array. Response keys: ${Object.keys(response.data).join(', ')}`);
-    }
-    
-    return response.data;
-  } catch (error: unknown) {
-    // Amélioration du logging des erreurs
-    const axiosError = error as AxiosError;
-    console.error('OpenRouter API error details:', {
-      status: axiosError.response?.status,
-      statusText: axiosError.response?.statusText,
-      data: axiosError.response?.data,
-      message: (error as Error).message
-    });
-    
-    let errorMessage = 'Error calling OpenRouter API';
-    
-    // Traitement spécifique selon le type d'erreur
-    if (axiosError.response) {
-      // Réponse de l'API avec erreur
-      if (axiosError.response?.status === 400) {
-        errorMessage = `Requête invalide: ${(axiosError.response?.data as Record<string, { message?: string }>)?.error?.message || 'Format incorrect'}`;
-      } else if (axiosError.response?.status === 401) {
-        errorMessage = `Erreur d'authentification: Clé API invalide`;
-      } else if (axiosError.response?.status === 403) {
-        errorMessage = `Accès refusé: Vérifiez votre clé API et vos permissions`;
-      } else if (axiosError.response?.status === 404) {
-        errorMessage = `Modèle "${modelId}" non trouvé ou non disponible`;
-      } else if (axiosError.response?.status === 429) {
-        errorMessage = `Limite de requêtes atteinte. Veuillez réessayer plus tard`;
-      } else {
-        errorMessage = `Erreur ${axiosError.response?.status}: ${(axiosError.response?.data as Record<string, { message?: string }>)?.error?.message || axiosError.response?.statusText}`;
-      }
-    } else if (axiosError.request) {
-      // Requête envoyée mais pas de réponse
-      errorMessage = `Erreur réseau: Pas de réponse du serveur OpenRouter`;
-    } else {
-      // Erreur dans la configuration de la requête
-      errorMessage = `Erreur de configuration: ${(error as Error).message}`;
-    }
-    
-    throw new Error(errorMessage);
+    return await response.json();
+  } catch (error) {
+    console.error("Erreur lors de l'appel à OpenRouter:", error);
+    throw error;
   }
 }
 
@@ -431,7 +191,12 @@ export async function callNotDiamondAPI(modelId: string, messages: Message[], st
       
       try {
         // Appel à OpenRouter avec le modèle équivalent
-        const openRouterResponse = await callOpenRouterAPI(fallbackModelId, messages, stream);
+        const openRouterResponse = await callOpenRouterAPI({
+          apiKey: OPENROUTER_API_KEY,
+          payload: { model: fallbackModelId, messages, stream },
+          referer: 'https://tetika.app',
+          title: 'Tetika AI Chat'
+        });
         console.log('Successfully used OpenRouter as fallback');
         
         // Ajouter une note dans la réponse pour informer l'utilisateur du fallback
@@ -549,24 +314,69 @@ export async function searchWithSerpAPI(query: string) {
       }
     };
   }
-}  // Sélection de l'API en fonction du modèle
-export async function callAIModel(model: AIModel, messages: Message[], stream = false, apiKeys?: { openrouter?: string, notdiamond?: string, serpapi?: string }) {
-  if (!model) {
-    throw new Error('No model specified');
-  }
+}
+
+// Fonction pour sanitizer le contenu provenant de sources externes (SerpAPI)
+function sanitizeExternalContent(text: string): string {
+  if (!text) return '';
   
-  console.log(`Appel au modèle ${model.id} avec le provider ${model.provider}`);
-  if (apiKeys) {
-    console.log(`Clés API fournies par le client: OpenRouter=${!!apiKeys.openrouter}, NotDiamond=${!!apiKeys.notdiamond}, SerpAPI=${!!apiKeys.serpapi}`);
-  }
+  // Détecter et traiter spécifiquement les exemples de code potentiels
+  // Identifier les motifs communs qui pourraient indiquer du code
+  let processedText = text;
   
-  if (model.provider === 'openrouter') {
-    return callOpenRouterAPI(model.id, messages, stream, apiKeys?.openrouter);
-  } else if (model.provider === 'notdiamond') {
-    return callNotDiamondAPI(model.id, messages, stream, apiKeys?.notdiamond);
-  } else {
-    throw new Error(`Provider not supported: ${model.provider}`);
-  }
+  // Convertir les motifs qui ressemblent à des imports/requires en texte descriptif
+  processedText = processedText.replace(
+    /\b(import|from|require|using)\b.*(;|\n|$)/g, 
+    'CODE: $&'
+  );
+  
+  // Identifier des motifs communs de code comme les déclarations de variables ou fonctions
+  processedText = processedText.replace(
+    /\b(const|let|var|function|def|class|if|for|while)\b\s+\w+\s*[\(=]/g, 
+    'CODE: $&'
+  );
+  
+  // Identifier les URL et les chemins de fichiers pour éviter les confusions
+  processedText = processedText.replace(
+    /(https?:\/\/[^\s]+|\/\w+\/[\w\/\.]+)/g, 
+    '[URL_OR_PATH]$&[/URL_OR_PATH]'
+  );
+  
+  // Échapper tous les caractères spéciaux qui pourraient perturber le markdown
+  return processedText
+    .replace(/```/g, '[BLOC_DE_CODE]')
+    .replace(/`/g, '[CODE_INLINE]')
+    .replace(/\$/g, '[SYMBOLE_DOLLAR]')
+    .replace(/\[/g, '[CROCHET_OUVRANT]')
+    .replace(/\]/g, '[CROCHET_FERMANT]')
+    .replace(/\*/g, '[ASTERISQUE]')
+    .replace(/\_/g, '[UNDERSCORE]')
+    .replace(/\#/g, '[DIESE]');
+}
+
+// Post-traitement des réponses contenant du code
+import { enhanceRagCodeDetection } from './rag-code-fixer-v2';
+import { postProcessQuantumCode } from './quantum-code-detector';
+import { detectAndFormatQSharpCodeImproved, formatQSharpSnippet } from './qsharp-detector-improved';
+
+function postProcessCodeInResponse(content: string): string {
+  if (!content) return '';
+  
+  // Première passe: amélioration générale de la détection de code
+  let processedContent = enhanceRagCodeDetection(content);
+  
+  // Seconde passe: détection spécialisée pour le code quantique (IBM Qiskit)
+  processedContent = postProcessQuantumCode(processedContent);
+  
+  // Troisième passe: détection spécialisée pour le code quantique Microsoft Q# (QSharp)
+  // avec notre nouvelle implémentation améliorée pour les fragments
+  processedContent = detectAndFormatQSharpCodeImproved(processedContent);
+  
+  // Quatrième passe: une détection additionnelle pour les fragments Q# restants
+  // qui pourrait avoir été manqués par le traitement précédent
+  processedContent = formatQSharpSnippet(processedContent);
+  
+  return processedContent;
 }
 
 // Fonction pour enrichir un message avec des informations de recherche (RAG)
@@ -598,31 +408,68 @@ export async function enrichWithRAG(message: string) {
             `en raison de problèmes de connexion. Je vais répondre en me basant sur mes connaissances internes.\n\n` +
             `Question de l'utilisateur: ${message}`,
           sources: [] // Pas de sources disponibles
-        };
-      }
+        };      }
       
-      interface EnrichedDataItem {
+      // L'interface EnrichedItem est utilisée plus bas pour typer les données enrichies
+      
+      const enrichedData = organicResults.slice(0, 3).map((result: Record<string, string>) => {
+        // Extraire les informations et sanitizer
+        const snippet = result.snippet || "Description non disponible";
+        return {
+          title: sanitizeExternalContent(result.title || "Titre non disponible"),
+          link: result.link || "https://example.com",
+          snippet: sanitizeExternalContent(snippet),
+          // Ajouter une détection pour savoir si le snippet contient probablement du code
+          containsCode: /\b(import|from|require|using|function|def|class|if|for|while|const|let|var)\b/.test(snippet)
+        };      });
+      
+      // Formater les résultats pour inclusion dans le prompt avec instructions explicites      
+      interface EnrichedItem {
         title: string;
         link: string;
         snippet: string;
+        containsCode?: boolean;
       }
       
-      const enrichedData = organicResults.slice(0, 3).map((result: Record<string, string>) => ({
-        title: result.title || "Titre non disponible",
-        link: result.link || "https://example.com",
-        snippet: result.snippet || "Description non disponible"
-      }));
-      
-      // Formater les résultats pour inclusion dans le prompt
-      const contextString = enrichedData.map((item: EnrichedDataItem) => 
-        `Source: ${item.title}\nURL: ${item.link}\nInformation: ${item.snippet}\n`
-      ).join('\n');
+      const contextString = enrichedData.map((item: EnrichedItem, index: number) =>
+        `<SOURCE INDEX="${index + 1}">\n` +
+        `<TITLE>${item.title}</TITLE>\n` +
+        `<URL>${item.link}</URL>\n` +
+        `<CONTENT${item.containsCode ? ' TYPE="POTENTIAL_CODE"' : ''}>\n${item.snippet}\n</CONTENT>\n` +
+        `</SOURCE>`
+      ).join('\n\n');
       
       console.log('Successfully enriched message with', enrichedData.length, 'search results');
       
+      // Utiliser des balises HTML-like pour une meilleure délimitation
+      const enhancedContent = 
+        `<SYSTEM>\n` +
+        `Vous êtes un assistant d'intelligence artificielle. Vous recevez un message utilisateur et des informations contextuelles.\n` +
+        `Ces informations proviennent d'une recherche web et peuvent contenir des exemples de code.\n` +
+        `Si les informations contextuelles contiennent du code ou des extraits de code, vous DEVEZ toujours formater votre réponse en utilisant la syntaxe markdown appropriée.\n` +
+        `Pour le code, utilisez la syntaxe triple backtick (\`\`\`) suivie du langage (par exemple \`\`\`python, \`\`\`javascript, etc.).\n` +
+        `Ne reproduisez JAMAIS les balises XML/HTML utilisées pour structurer ce message dans votre réponse.\n` +
+        `</SYSTEM>\n\n` +
+        
+        `<USER_MESSAGE>\n${sanitizeExternalContent(message)}\n</USER_MESSAGE>\n\n` +
+        
+        `<CONTEXT>\n${contextString}\n</CONTEXT>\n\n` +
+        
+        `<INSTRUCTIONS>\n` +
+        `1. Répondez à la question de l'utilisateur en vous basant sur les informations contextuelles fournies.\n` +
+        `2. Si les informations contextuelles contiennent du code, formatez TOUJOURS ce code dans des blocs de code markdown appropriés (\`\`\`langage).\n` +
+        `3. Ne mentionnez pas les balises XML/HTML utilisées dans ce message.\n` +
+        `4. Si vous ne trouvez pas d'information pertinente dans le contexte, répondez en utilisant vos connaissances générales.\n` +
+        `5. Citez vos sources quand c'est pertinent.\n` +
+        `</INSTRUCTIONS>`;
+      
       return {
-        content: `Le message de l'utilisateur est: "${message}"\n\nInformations contextuelles issues de recherches web:\n${contextString}\n\nVeuillez répondre à la question de l'utilisateur en vous basant sur ces informations contextuelles.`,
-        sources: enrichedData // Nous retournons aussi les sources pour les afficher dans l'UI
+        content: enhancedContent,        sources: enrichedData.map((item: EnrichedItem) => ({
+          title: item.title.replace(/\[.*?\]/g, ''),  // Retirer les marqueurs spéciaux
+          link: item.link,
+          snippet: item.snippet.replace(/\[.*?\]/g, '')  // Retirer les marqueurs spéciaux
+        })),
+        postProcess: postProcessCodeInResponse  // Ajouter la fonction de post-traitement
       };
     } catch (searchError: Error | unknown) {
       const err = searchError as Error;
@@ -661,6 +508,41 @@ export async function enrichWithRAG(message: string) {
       sources: [] // Pas de sources disponibles en cas d'erreur
     };
   }
+}
+
+// Sélection de l'API en fonction du modèle
+export async function callAIModel(model: AIModel, messages: Message[], stream = false, apiKeys?: { openrouter?: string, notdiamond?: string, serpapi?: string }) {
+  if (!model) {
+    throw new Error('No model specified');
+  }
+  
+  console.log(`Appel au modèle ${model.id} avec le provider ${model.provider}`);
+  if (apiKeys) {
+    console.log(`Clés API fournies par le client: OpenRouter=${!!apiKeys.openrouter}, NotDiamond=${!!apiKeys.notdiamond}, SerpAPI=${!!apiKeys.serpapi}`);
+  }
+  
+  const response = model.provider === 'openrouter' 
+    ? await callOpenRouterAPI({
+        apiKey: apiKeys?.openrouter,
+        payload: { model: model.id, messages, stream },
+        referer: 'https://tetika.app',
+        title: 'Tetika AI Chat'
+      })
+    : model.provider === 'notdiamond'
+      ? await callNotDiamondAPI(model.id, messages, stream, apiKeys?.notdiamond)
+      : (() => { throw new Error(`Provider not supported: ${model.provider}`); })();
+      
+  // Appliquer le post-traitement si disponible et nécessaire
+  // Ceci est important pour le mode RAG où nous avons la fonction postProcess
+  if (response?.choices && response.choices[0]?.message?.content && 
+      messages[messages.length - 1]?.postProcess) {
+    const postProcessFn = messages[messages.length - 1].postProcess;
+    if (typeof postProcessFn === 'function') {
+      response.choices[0].message.content = postProcessFn(response.choices[0].message.content);
+    }
+  }
+  
+  return response;
 }
 
 // Fonction pour sécuriser les entrées utilisateur

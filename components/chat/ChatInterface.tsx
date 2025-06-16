@@ -927,10 +927,9 @@ const ChatInterface: React.FC = () => {
                         conversationContext: messages.map(m => ({ 
                           role: m.role, 
                           content: m.content 
-                        })),
-                        sources: message.sources?.map(source => ({
+                        })),                        sources: message.sources?.map(source => ({
                           title: source.title,
-                          link: source.url, // Map url to the link property expected by the Message component
+                          link: source.url || '', // Map url to the link property, ensure it's a string
                           url: source.url,  // Keep url for backward compatibility
                           snippet: source.snippet,
                           position: source.position

@@ -1,0 +1,290 @@
+/**
+ * qsharp-detector.ts
+ * 
+ * Module spécialisé pour la détection et le formatage du code Q# (QSharp)
+ * spécifiquement pour Microsoft Quantum Development
+ * 
+ * Note: Ce fichier a été simplifié et redirige maintenant vers l'implémentation améliorée
+ * dans qsharp-detector-improved.ts. Il est conservé pour la compatibilité avec le code existant.
+ * 
+ * Exemples de code Q# à détecter:
+ * 
+ * Exemple 1:
+ * ```
+ * namespace QuantumHelloWorld
+ * open Microsoft.Quantum.Canon
+ * open Microsoft.Quantum.Intrinsic
+ * 
+ * @EntryPoint()
+ * operation HelloWorld() : Unit {
+ *     Message("Hello quantum world!");
+ * }
+ * ```
+ * 
+ * Exemple 2:
+ * ```
+ * namespace QuantumRNG {
+ *     open Microsoft.Quantum.Intrinsic;
+ *     open Microsoft.Quantum.Canon;
+ *     open Microsoft.Quantum.Measurement;
+ *     open Microsoft.Quantum.Convert;
+ *     
+ *     operation GenerateRandomBit() : Result {
+ *         use qubit = Qubit();
+ *         H(qubit);
+ *         return M(qubit);
+ *     }
+ * }
+ * ```
+ */
+
+import { detectAndFormatQSharpCodeImproved, formatQSharpSnippet } from './qsharp-detector-improved';
+
+/**
+ * Note: La fonction assembleQSharpFragments originale a été déplacée vers le module
+ * qsharp-fragment-assembler.ts avec une implémentation améliorée. Elle n'est plus
+ * nécessaire ici, car nous utilisons maintenant la version améliorée.
+ */
+  
+  // Mots-clés et patterns spécifiques à Q#
+  const qsharpKeywords = [
+    'namespace', 'open Microsoft.Quantum', 'operation', 'function',
+    'Microsoft.Quantum.Canon', 'Microsoft.Quantum.Intrinsic', 'Microsoft.Quantum.Measurement',
+    'Microsoft.Quantum.Convert', 'Microsoft.Quantum.Arrays', 'Microsoft.Quantum.Diagnostics',
+    'MeasureWithProbability', '@EntryPoint', 'use', 'using', 'if', 'let', 'return', 'fail',
+    'repeat', 'until', 'within', 'apply', 'controlled'
+  ];
+  
+  // Indicateurs de continuité de code Q#
+  const continuationIndicators = [
+    /^\s*\{/, // Début d'un bloc
+    /^\s*\}/, // Fin d'un bloc
+    /^\s*\w+\s*\(/, // Appel de fonction 
+    /^\s*let\s+\w+/, // Déclaration de variable
+    /^\s*use\s+\w+/, // Utilisation de qubit
+    /^\s*if\s+/, // Début de condition
+    /^\s*else/, // Clause else
+    /^\s*return\s+/, // Instruction de retour
+    /^\s*\/\//, // Commentaire
+    /^\s*within\s+\{/, // Bloc within
+    /^\s*apply\s+\{/, // Bloc apply
+    /^\s*H\(/, // Porte Hadamard
+    /^\s*X\(/, // Porte X
+    /^\s*CNOT\(/, // Porte CNOT
+    /^\s*M\(/, // Mesure
+    /^\s*MeasureWithProbability\(/, // Mesure avec probabilité
+    /^\s*Measure\(/ // Mesure générique
+  ];
+  
+  // Première passe : identifier les fragments potentiels de code Q#
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Ignorer les lignes vides ou les lignes de délimitation de code
+    if (line === '' || line.startsWith('```')) {
+      if (inFragment) {
+        fragments.push(currentFragment);
+        currentFragment = '';
+        inFragment = false;
+      }
+      result.push(lines[i]);
+      continue;
+    }
+    
+    // Détection spéciale pour MeasureWithProbability qui est souvent fragmenté
+    // et autres fonctions quantiques qui peuvent s'étendre sur plusieurs lignes
+    const isOperationStart = 
+      /MeasureWithProbability\s*\(/i.test(line) || 
+      /\boperation\s+\w+\s*\(/i.test(line) || 
+      /\busing\s*\(/i.test(line) ||
+      line.includes('use qubit');
+
+    // Détection d'opération quantum fragmentée en cours (anticipation d'un bloc partiellement commencé)
+    const isOperationInProgress = 
+      line.includes('(') && !line.includes(')') || // Parenthèse ouverte mais pas fermée
+      line.includes('{') && !line.includes('}') || // Accolade ouverte mais pas fermée
+      /=>|within|apply|zero|one|let|use/.test(line); // Mots-clés Q# de continuité
+    
+    // Vérifier si la ligne contient des mots-clés Q#
+    const isQSharpLine = 
+      qsharpKeywords.some(keyword => line.includes(keyword)) ||
+      continuationIndicators.some(pattern => pattern.test(line)) ||
+      isOperationStart ||
+      isOperationInProgress ||
+      (inFragment && (
+        line.includes('(') || line.includes(')') || // Suite d'une fonction/opération
+        line.includes('{') || line.includes('}') || // Suite d'un bloc
+        /=>|=|\/\//.test(line) || // Expression lambda ou assignation ou commentaire
+        line.trim().length < 3  // Très courte ligne (probablement partie d'un bloc)
+      ));
+    
+    if (isQSharpLine) {
+      if (!inFragment) {
+        inFragment = true;
+        fragmentStart = result.length;
+      }
+      currentFragment += lines[i] + '\n';
+      // On n'ajoute pas cette ligne à result maintenant, on le fera après l'assemblage
+    } else {
+      if (inFragment) {
+        fragments.push(currentFragment);
+        currentFragment = '';
+        inFragment = false;
+      }
+      result.push(lines[i]);
+    }
+  }
+  
+  // S'assurer qu'on n'a pas oublié le dernier fragment
+  if (currentFragment) {
+    fragments.push(currentFragment);
+  }
+  
+  // Si on a trouvé des fragments, les traiter
+  if (fragments.length > 0) {
+    // Deuxième passe : analyser les fragments et les regrouper si nécessaire
+    const consolidatedFragments: string[] = [];
+    const currentConsolidated = fragments[0];
+    
+    for (let i = 1; i < fragments.length; i++) {
+      const currentLines = currentConsolidated.split('\n');
+      const nextFragment = fragments[i];
+      const nextLines = nextFragment.split('\n');
+      
+      // Vérifier si les fragments semblent liés
+      const shouldCombine = 
+        // Le fragment actuel se termine par une accolade ouvrante
+        currentLines[currentLines.length - 2]?.trim()?.endsWith('{') ||
+        // Le fragment suivant commence par une continuation logique
+        continuationIndicators.some(pattern => 
+          pattern.test(nextLines[0].trim())
+        ) ||
+        // Le fragment suivant semble être une partie d'une opération
+        (nextFragment.includes('(') && !nextFragment.includes(')')) ||
+        (currentConsolidated.includes('(') && !currentConsolidated.includes(')') && nextFragment.includes(')'));
+      
+      if (shouldCombine) {
+        // Combiner les fragments
+        currentConsolidated += nextFragment;
+      } else {
+        // Sauvegarder le fragment actuel et commencer un nouveau
+        consolidatedFragments.push(currentConsolidated);
+        currentConsolidated = nextFragment;
+      }
+    }
+    
+    // Ajouter le dernier fragment consolidé
+    consolidatedFragments.push(currentConsolidated);
+    
+    // Troisième passe : formater les fragments consolidés comme des blocs de code Q#
+    const contentArray = content.split('\n');
+    
+    // Remplacer les fragments originaux par leurs versions consolidées
+    for (const fragment of consolidatedFragments) {
+      // Ne formater que si le fragment n'est pas déjà dans un bloc de code
+      if (!fragment.includes('```')) {
+        const formattedFragment = `\n\`\`\`qsharp\n${fragment.trim()}\n\`\`\`\n`;
+        
+        // Rechercher ce fragment dans le contenu original
+        const fragmentLines = fragment.split('\n').filter(l => l.trim() !== '');
+        if (fragmentLines.length > 0) {
+          // Rechercher l'emplacement de la première ligne du fragment
+          const firstLine = fragmentLines[0];
+          for (let i = 0; i < contentArray.length; i++) {
+            if (contentArray[i].includes(firstLine)) {
+              // Remplacer le fragment
+              const endLineIndex = Math.min(i + fragmentLines.length, contentArray.length);
+              contentArray.splice(i, endLineIndex - i, formattedFragment);
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    content = contentArray.join('\n');
+  }
+  
+  return content;
+}
+
+/**
+ * Détecte et formate spécifiquement le code Q# dans les réponses RAG
+ * @param content Le contenu à analyser
+ * @returns Le contenu avec le code Q# correctement formaté
+ */
+export function detectAndFormatQSharpCode(content: string): string {
+  if (!content) return '';
+  
+  // Si déjà formaté avec qsharp, retourner tel quel
+  if (content.includes('```qsharp')) return content;
+  
+  // Note: Cette fonction est remplacée par detectAndFormatQSharpCodeImproved du module qsharp-detector-improved
+  // Nous conservons cette version simplifiée pour la compatibilité ascendante
+  
+  // Traitement direct du contenu pour formater le code Q#
+  
+  // Mots-clés spécifiques à Q#
+  const qsharpKeywords = [
+    'namespace', 'open Microsoft.Quantum', 'operation', '[Operation]', 'function',
+    'Microsoft.Quantum.Canon', 'Microsoft.Quantum.Arrays', 'Microsoft.Quantum.Diagnostics',
+    'Microsoft.Quantum.Math', 'Microsoft.Quantum.Measurement', 'Microsoft.Quantum.QSharp.Core'
+  ];
+  
+  // Vérifier si le contenu contient des éléments de code Q#
+  const containsQSharpCode = qsharpKeywords.some(keyword => content.includes(keyword));
+  if (!containsQSharpCode) return content;
+  
+  // Stratégie de détection par lignes consécutives 
+  // (particulièrement efficace pour les imports et déclarations)
+  const lines = content.split('\n');
+  let inQSharpBlock = false;
+  let qsharpBlockStart = -1;
+  const qsharpBlocks = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const isQSharpLine = qsharpKeywords.some(keyword => line.includes(keyword)) || 
+                         (inQSharpBlock && line !== '' && !line.startsWith('```'));
+    
+    if (isQSharpLine && !inQSharpBlock) {
+      // Début d'un bloc Q#
+      inQSharpBlock = true;
+      qsharpBlockStart = i;
+    } else if ((!isQSharpLine || i === lines.length - 1) && inQSharpBlock) {
+      // Fin d'un bloc Q#
+      const blockEndIndex = isQSharpLine && i === lines.length - 1 ? i + 1 : i;
+      qsharpBlocks.push({
+        start: qsharpBlockStart,
+        end: blockEndIndex - 1,
+        content: lines.slice(qsharpBlockStart, blockEndIndex).join('\n')
+      });
+      inQSharpBlock = false;
+    }
+  }
+  
+  // Remplacer chaque bloc par sa version formatée (en ordre inverse pour éviter les décalages d'index)
+  qsharpBlocks.reverse().forEach(block => {
+    if (block.content.trim() && !block.content.includes('```')) {
+      const formattedBlock = `\`\`\`qsharp\n${block.content}\n\`\`\``;
+      lines.splice(block.start, block.end - block.start + 1, formattedBlock);
+    }
+  });
+  
+  return lines.join('\n');
+}
+
+/**
+ * Version simplifiée pour formater les exemples de code Q# courants
+ * @param content Le contenu à traiter
+ */
+export function formatQSharpSnippet(content: string): string {
+  if (!content || content.includes('```qsharp')) return content;
+  
+  // Rechercher des blocs spécifiques de code Q#
+  const simpleQSharpPattern = /(namespace\s+\w+[\s\S]*?open\s+Microsoft\.Quantum[\s\S]*?(?:operation|function)\s+\w+[\s\S]*?)/g;
+  return content.replace(simpleQSharpPattern, match => {
+    if (match.includes('```')) return match;
+    return `\n\`\`\`qsharp\n${match.trim()}\n\`\`\`\n`;
+  });
+}
