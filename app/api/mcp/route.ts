@@ -22,38 +22,127 @@ interface SearchResult {
   position: number;
 }
 
+interface OrganicResult {
+  title: string;
+  link: string;
+  snippet: string;
+  position?: number;
+}
+
+interface FetchMCPResult {
+  organic_results?: OrganicResult[];
+  search_metadata?: {
+    status: string;
+    query: string;
+    total_results?: number;
+    error?: string;
+    provider: string;
+  };
+}
+
+interface FetchOptions {
+  maxResults?: number;
+  headers?: Record<string, string>;
+}
+
 interface SearchResponse {
   results: SearchResult[];
   provider: string;
   success: boolean;
+  category?: string;
+  totalResults?: number;
 }
 
-// Real SearXNG search function using HTML parsing (most public instances don't support JSON)
-async function performSearXNGSearch(query: string) {
+// Helper function to select optimal engines based on search category/subject
+function getOptimalEngines(category: string): string {
+  const engineMaps: Record<string, string> = {
+    'general': 'google,bing,duckduckgo,wikipedia,startpage',
+    'science': 'google scholar,arxiv,pubmed,semantic scholar,crossref,base',
+    'it': 'stackoverflow,github,searchcode code,google,bing',
+    'academic': 'google scholar,semantic scholar,arxiv,pubmed,crossref',
+    'news': 'google,bing,reddit,hackernews',
+    'technical': 'stackoverflow,github,searchcode code,reddit',
+    'research': 'google scholar,arxiv,semantic scholar,wikipedia,library genesis',
+    'programming': 'stackoverflow,github,searchcode code,hackernews',
+    'medical': 'pubmed,google scholar,semantic scholar',
+    'physics': 'arxiv,google scholar,semantic scholar',
+    'biology': 'pubmed,arxiv,google scholar',
+    'computer science': 'arxiv,stackoverflow,github,google scholar'
+  };
+  
+  return engineMaps[category] || engineMaps['general'];
+}
+
+// Enhanced function to determine search category from query content
+function detectSearchCategory(query: string): string {
+  const keywords = query.toLowerCase();
+  
+  // Programming/IT keywords
+  if (/\b(code|programming|javascript|python|react|api|database|algorithm|software|bug|debug|framework|library)\b/.test(keywords)) {
+    return 'it';
+  }
+  
+  // Academic/Scientific keywords
+  if (/\b(research|study|analysis|paper|journal|academic|scholar|thesis|publication|peer.review)\b/.test(keywords)) {
+    return 'academic';
+  }
+  
+  // Medical keywords
+  if (/\b(medical|health|disease|treatment|medicine|clinical|patient|therapy|drug|diagnosis)\b/.test(keywords)) {
+    return 'medical';
+  }
+  
+  // Physics keywords  
+  if (/\b(physics|quantum|relativity|mechanics|thermodynamics|electromagnetism|particle|wave)\b/.test(keywords)) {
+    return 'physics';
+  }
+  
+  // Biology keywords
+  if (/\b(biology|genetics|dna|rna|cell|organism|evolution|ecology|molecular|protein)\b/.test(keywords)) {
+    return 'biology';
+  }
+  
+  // News/Current events
+  if (/\b(news|breaking|latest|today|current|recent|update|happened|event)\b/.test(keywords)) {
+    return 'news';
+  }
+  
+  // Default to general for broad research
+  return 'general';
+}
+
+// Enhanced SearXNG search function optimized for RAG research
+async function performSearXNGSearch(query: string, category?: string) {
   if (!query) {
     throw new Error('Query is required for SearXNG search');
   }
   
-  console.log(`[SearXNG] Recherche: "${query}"`);
+  // Auto-detect category if not provided
+  const searchCategory = category || detectSearchCategory(query);
+  console.log(`[SearXNG] Recherche RAG: "${query}" dans la catégorie: ${searchCategory}`);
   
-  // Working public SearXNG instances (verified to work with HTML parsing)
+  // Optimized SearXNG instances with better research capabilities
   const instances = [
     'https://searx.be',
-    'https://searx.tiekoetter.com',
+    'https://searx.tiekoetter.com', 
     'https://opnxng.com',
     'https://searxng.world',
-    'https://searx.oloke.xyz'
+    'https://searx.oloke.xyz',
+    'https://search.sapti.me',
+    'https://searx.work'
   ];
   
   for (const instance of instances) {
-    try {
-      console.log(`[SearXNG] Tentative avec l'instance: ${instance}`);
-      
+    try {      console.log(`[SearXNG] Tentative avec l'instance: ${instance}`);
+        // Enhanced search parameters for better RAG research results
       const params = new URLSearchParams({
         q: query,
-        language: 'fr',
+        language: 'auto',  // Auto-detect for international research
         time_range: '',
-        categories: 'general'
+        categories: searchCategory,
+        engines: getOptimalEngines(searchCategory), // Dynamic engine selection
+        format: 'html',
+        pageno: '1'
       });
       
       const response = await axios({
@@ -100,11 +189,10 @@ function transformSearXNGResults(htmlData: string): SearchResult[] {
     // Log du HTML reçu pour debug (premières lignes seulement)
     console.log('[SearXNG] HTML reçu (extrait):', htmlData.substring(0, 500) + '...');
     console.log('[SearXNG] Longueur totale du HTML:', htmlData.length);
+      // Vérifier si on a des résultats de recherche optimisés pour RAG
+    console.log('[SearXNG] Recherche de conteneurs de résultats RAG...');
     
-    // Vérifier si on a des résultats de recherche
-    console.log('[SearXNG] Recherche de conteneurs de résultats...');
-    
-    // Extended SearXNG result selectors with more specific patterns
+    // Extended SearXNG result selectors optimized for research content
     const resultSelectors = [
       '.result',
       '#results .result',
@@ -320,13 +408,12 @@ export async function multiProviderSearch(args: Record<string, unknown>): Promis
   switch (provider) {
     case 'fetch-mcp':
       // Fetch MCP doesn't require API key
-      try {
-        console.log('[MCP] Utilisation de Fetch MCP (recherche et extraction directe)');
-        const fetchResults = await fetchMCPProvider.search(query, { maxResults: 5 });
+      try {        console.log('[MCP] Utilisation de Fetch MCP (recherche et extraction directe)');
+        const fetchResults: FetchMCPResult = await fetchMCPProvider.search(query, { maxResults: 5 });
         
         if (fetchResults.organic_results && fetchResults.organic_results.length > 0) {
           return {
-            results: fetchResults.organic_results.map((result: any, index: number) => ({
+            results: fetchResults.organic_results.map((result: OrganicResult, index: number) => ({
               title: result.title,
               url: result.link,
               snippet: result.snippet,
@@ -365,29 +452,31 @@ export async function multiProviderSearch(args: Record<string, unknown>): Promis
         console.error('[MCP] SerpAPI - Erreur lors de la recherche:', searchError);
         const errorMessage = searchError instanceof Error ? searchError.message : String(searchError);
         throw new Error(`Erreur SerpAPI: ${errorMessage}`);
-      }
-        case 'searxng':
-      // SearXNG doesn't require API key - use real search
+      }        case 'searxng':
+      // Enhanced SearXNG with intelligent category detection for RAG
       try {
-        console.log('[MCP] Utilisation de SearXNG (recherche réelle)');
+        console.log('[MCP] Utilisation de SearXNG optimisé pour RAG');
         const searxResults = await performSearXNGSearch(query);
         const transformedResults = transformSearXNGResults(searxResults);
         
         if (transformedResults.length > 0) {
+          console.log(`[SearXNG] ${transformedResults.length} résultats RAG trouvés`);
           return {
             results: transformedResults,
-            provider: 'searxng',
-            success: true
+            provider: 'searxng-rag',
+            success: true,
+            category: detectSearchCategory(query), // Include detected category
+            totalResults: transformedResults.length
           };
         } else {
-          console.warn('[SearXNG] Aucun résultat trouvé, fallback vers SerpAPI');
+          console.warn('[SearXNG] Aucun résultat RAG trouvé, fallback vers SerpAPI');
           return multiProviderSearch({ ...args, provider: 'serpapi' });
         }
       } catch (searxError) {
-        console.error('[SearXNG] Erreur lors de la recherche:', searxError);
+        console.error('[SearXNG] Erreur lors de la recherche RAG:', searxError);
         console.log('[SearXNG] Fallback vers SerpAPI après erreur');
         return multiProviderSearch({ ...args, provider: 'serpapi' });
-      }      
+      }
     default:
       // Fallback to SerpAPI
       console.log(`[MCP] Fournisseur ${provider} non supporté, fallback vers SerpAPI`);
@@ -732,7 +821,7 @@ async function fetchWebContent(args: Record<string, unknown>) {
     
     console.log(`[MCP] Fetch de contenu web: ${url}`);
     
-    const result = await fetchMCPProvider.fetchUrl(url, options as any);
+    const result = await fetchMCPProvider.fetchUrl(url, options as FetchOptions);
     
     return {
       content: [

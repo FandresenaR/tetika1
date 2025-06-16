@@ -23,7 +23,31 @@ interface FetchResult {
   content: string;
   snippet?: string;
   error?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+}
+
+interface FormattedSearchResult {
+  title: string;
+  link: string;
+  snippet: string;
+  position: number;
+  source: string;
+}
+
+interface SearchResponse {
+  organic_results: FormattedSearchResult[];
+  search_metadata: {
+    status: string;
+    query: string;
+    total_results?: number;
+    error?: string;
+    provider: string;
+  };
+}
+
+interface DuckDuckGoTopic {
+  Text?: string;
+  FirstURL?: string;
 }
 
 export class FetchMCPProvider {
@@ -39,13 +63,13 @@ export class FetchMCPProvider {
     this.description = 'Direct web fetching with content extraction';
     this.requiresApiKey = false;
     this.priority = 3;
-  }
-  /**
+  }  /**
    * Search the web using Fetch MCP
    * @param {string} query - Search query
    * @param {SearchOptions} options - Search options
-   * @returns {Promise<Object>} - Search results
-   */  async search(query: string, options: SearchOptions = {}): Promise<any> {
+   * @returns {Promise<SearchResponse>} - Search results
+   */  
+  async search(query: string, options: SearchOptions = {}): Promise<SearchResponse> {
     console.log(`[Fetch MCP Provider] Searching for: ${query}`);
     
     try {
@@ -169,10 +193,9 @@ export class FetchMCPProvider {
           content: data.AbstractText,
           source: 'DuckDuckGo Instant Answer'
         });
-      }
-        // Process related topics
+      }        // Process related topics
       if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
-        data.RelatedTopics.slice(0, 3).forEach((topic: any) => {
+        data.RelatedTopics.slice(0, 3).forEach((topic: DuckDuckGoTopic) => {
           if (topic.Text && topic.FirstURL) {
             results.push({
               title: topic.Text.split(' - ')[0] || 'Sujet connexe',
@@ -321,9 +344,8 @@ export class FetchMCPProvider {
       const searchResponse = await fetch(searchUrl);
       if (!searchResponse.ok) {
         throw new Error(`Wikipedia search failed: ${searchResponse.status}`);
-      }
-        const searchData = await searchResponse.json();
-      const [searchTerm, titles, descriptions, urls] = searchData;
+      }        const searchData = await searchResponse.json();
+      const [, titles, descriptions, urls] = searchData;
       
       const results: SearchResult[] = [];
       
@@ -348,8 +370,7 @@ export class FetchMCPProvider {
                 content: extract,
                 source: `Wikipedia (${lang.toUpperCase()})`
               });
-            }
-          } catch (extractError) {
+            }          } catch {
             // Fallback to just the description
             results.push({
               title: titles[i],

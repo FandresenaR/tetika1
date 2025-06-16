@@ -1,0 +1,270 @@
+# SearXNG Configuration for RAG Research - Optimized for Comprehensive Subject Coverage
+# This configuration maximizes search quality and coverage for research purposes
+
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "TetikaMCP RAG Research Engine"
+  contact_url: false
+  enable_metrics: false
+
+brand:
+  new_issue_url: false
+  docs_url: false
+  public_instances: false
+  wiki_url: false
+  issue_url: false
+
+search:
+  safe_search: 0  # No filtering for research
+  autocomplete: "google"
+  autocomplete_min: 4
+  default_lang: "auto"
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  formats:
+    - html
+    - json
+
+server:
+  port: 8888
+  bind_address: "127.0.0.1"
+  secret_key: "research_key_for_mcp"
+  base_url: false
+  image_proxy: false
+  static_use_hash: false
+
+ui:
+  static_path: ""
+  templates_path: ""
+  default_theme: simple
+  default_locale: "en"
+  theme_args:
+    oscar_style: logicodev
+  center_alignment: false
+  cache_url: undef
+  query_in_title: false
+  infinite_scroll: false
+  search_on_category_select: true
+  hotkeys: default
+
+# Optimized engines for comprehensive research across subjects
+engines:
+  # Primary Search Engines - High Weight
+  - name: google
+    engine: google
+    shortcut: g
+    weight: 2.0
+    disabled: false
+    categories: [general, images, news, map, videos, it, science]
+    timeout: 3.0
+    
+  - name: bing
+    engine: bing
+    shortcut: bi
+    weight: 1.8
+    disabled: false
+    categories: [general, images, news, map, videos, it]
+    timeout: 3.0
+    
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    weight: 1.5
+    disabled: false
+    categories: [general, images, news, map, videos, it]
+    timeout: 4.0
+    
+  # Academic & Scientific Sources - Critical for Research
+  - name: google scholar
+    engine: google_scholar
+    shortcut: gscholar
+    weight: 2.5
+    disabled: false
+    categories: [science, it]
+    timeout: 5.0
+    
+  - name: semantic scholar
+    engine: semantic_scholar
+    shortcut: semscholar
+    weight: 2.3
+    disabled: false
+    categories: [science, it]
+    timeout: 6.0
+    
+  - name: arxiv
+    engine: arxiv
+    shortcut: arx
+    weight: 2.2
+    disabled: false
+    categories: [science, it]
+    timeout: 5.0
+    
+  - name: pubmed
+    engine: pubmed
+    shortcut: pub
+    weight: 2.1
+    disabled: false
+    categories: [science]
+    timeout: 5.0
+    
+  # Technical Documentation & Programming
+  - name: stackoverflow
+    engine: stackoverflow
+    shortcut: so
+    weight: 2.0
+    disabled: false
+    categories: [it]
+    timeout: 4.0
+    
+  - name: github
+    engine: github
+    shortcut: gh
+    weight: 1.9
+    disabled: false
+    categories: [it]
+    timeout: 4.0
+    
+  - name: searchcode code
+    engine: searchcode_code
+    shortcut: sc
+    weight: 1.7
+    disabled: false
+    categories: [it]
+    timeout: 5.0
+    
+  # Knowledge Bases & References
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    weight: 2.2
+    disabled: false
+    categories: [general]
+    timeout: 4.0
+    
+  - name: wikidata
+    engine: wikidata
+    shortcut: wd
+    weight: 1.8
+    disabled: false
+    categories: [general]
+    timeout: 4.0
+    
+  # News & Current Affairs
+  - name: reddit
+    engine: reddit
+    shortcut: re
+    weight: 1.6
+    disabled: false
+    categories: [general, news, it, science]
+    timeout: 4.0
+    
+  - name: hackernews
+    engine: hackernews
+    shortcut: hn
+    weight: 1.7
+    disabled: false
+    categories: [it, science]
+    timeout: 4.0
+    
+  # Alternative Search Engines for Diversity
+  - name: startpage
+    engine: startpage
+    shortcut: sp
+    weight: 1.4
+    disabled: false
+    categories: [general]
+    timeout: 4.0
+    
+  - name: searx
+    engine: searx
+    shortcut: sx
+    weight: 1.3
+    disabled: false
+    categories: [general]
+    timeout: 5.0
+    
+  # Specialized Sources
+  - name: crossref
+    engine: crossref
+    shortcut: cr
+    weight: 2.0
+    disabled: false
+    categories: [science]
+    timeout: 6.0
+    
+  - name: library genesis
+    engine: library_genesis
+    shortcut: lg
+    weight: 1.9
+    disabled: false
+    categories: [science, general]
+    timeout: 7.0
+    
+  - name: base
+    engine: base
+    shortcut: bs
+    weight: 1.8
+    disabled: false
+    categories: [science]
+    timeout: 6.0
+
+# Category configuration for organized search
+categories_as_tabs:
+  general:
+    - general
+  files:
+    - files
+  images:
+    - images
+  it:
+    - it
+  map:
+    - map
+  music:
+    - music
+  news:
+    - news
+  science:
+    - science
+  social media:
+    - social media
+  videos:
+    - videos
+
+# Locales for international research
+locales:
+  en: English
+  fr: Français
+  de: Deutsch
+  es: Español
+  it: Italiano
+  pt: Português
+  ru: Русский
+  zh: 中文
+  ja: 日本語
+  ko: 한국어
+
+default_locale: en
+
+# Outgoing request settings for reliability
+outgoing:
+  request_timeout: 6.0
+  useragent_suffix: "TetikaMCP-Research/1.0"
+  pool_connections: 200
+  pool_maxsize: 50
+  enable_http2: true
+  retries: 3
+  retry_delay: 1.0
+
+# Redis caching for performance (optional)
+redis:
+  url: false  # Set to redis://localhost:6379/0 if Redis available
+
+# Advanced search preferences
+preferences:
+  lock:
+    - language
+    - autocomplete
+    - method
