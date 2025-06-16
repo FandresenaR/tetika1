@@ -1,21 +1,30 @@
 {
   "name": "tetika",
   "version": "0.2.0",
-  "private": true,
-  "scripts": {
+  "private": true,  "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "mcp:start": "node mcp/start-server.js",
+    "mcp:test": "node mcp/test-server.js",
+    "mcp:example": "node mcp/example-client.js",
+    "mcp:test-web": "node mcp/test-web-api.js",
+    "test:fetch-mcp": "node test-fetch-mcp-integration.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "@types/ws": "^8.18.1",
     "axios": "^1.9.0",
+    "cheerio": "^1.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^16.5.0",
     "framer-motion": "^12.9.2",
+    "jsdom": "^26.1.0",
     "next": "15.3.1",
     "next-themes": "^0.4.6",
+    "node-fetch": "^3.3.2",
     "notdiamond": "^1.1.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -25,8 +34,10 @@
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.2.0",
-    "tailwindcss-animate": "^1.0.7"
-  },  "devDependencies": {
+    "tailwindcss-animate": "^1.0.7",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@types/node": "^20",
     "@types/react": "^19",

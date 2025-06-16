@@ -11,6 +11,7 @@ import SettingsButton from '@/components/ui/SettingsButton';
 import { Message, ChatMode, ChatSession } from '@/types';
 import { openRouterModels, getModelById } from '@/lib/models';
 import { isImageFile, isVideoFile, createMediaDescription, createImageContentWithBase64 } from '@/lib/media-utils';
+import { DEFAULT_RAG_PROVIDER } from '@/lib/rag-providers';
 
 // Génère un ID unique
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -31,9 +32,11 @@ const ChatInterface: React.FC = () => {
   const [showSidebar, setShowSidebar] = useState(true);
   const [conversations, setConversations] = useState<ChatSession[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  
-  // État global pour le mode RAG
+    // État global pour le mode RAG
   const [ragMode, setRagMode] = useState<boolean>(false);
+  
+  // État pour le fournisseur RAG sélectionné
+  const [selectedRAGProvider, setSelectedRAGProvider] = useState<string>(DEFAULT_RAG_PROVIDER);
   
   // États pour la barre latérale de code
   const [showCodeSidebar, setShowCodeSidebar] = useState(false);
@@ -75,7 +78,31 @@ const ChatInterface: React.FC = () => {
     // Activer la fonction qui déplace le bouton des paramètres
     moveSettingsButton();
   }, []);
-  
+    // Effect pour écouter les changements de fournisseur RAG
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'tetika-rag-provider' && e.newValue) {
+        setSelectedRAGProvider(e.newValue);
+      }
+    };
+
+    const handleRAGProviderChange = (e: CustomEvent) => {
+      const providerId = e.detail?.providerId;
+      if (providerId) {
+        setSelectedRAGProvider(providerId);
+        console.log('[RAG] Provider changed to:', providerId);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('rag-provider-changed', handleRAGProviderChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('rag-provider-changed', handleRAGProviderChange as EventListener);
+    };
+  }, []);
+
   // La sidebar sera toujours fixée à un état spécifique en fonction de l'appareil
   useEffect(() => {
     if (isMobile) {
@@ -127,8 +154,13 @@ const ChatInterface: React.FC = () => {
           const mostRecentId = sortedConversations[0].id;
           setActiveConversationId(mostRecentId);
           setMessages(sortedConversations[0].messages);
-          setModelId(sortedConversations[0].modelId);
-        }
+          setModelId(sortedConversations[0].modelId);        }
+      }
+      
+      // Charger le fournisseur RAG sélectionné
+      const savedRAGProvider = localStorage.getItem('tetika-rag-provider');
+      if (savedRAGProvider) {
+        setSelectedRAGProvider(savedRAGProvider);
       }
     } catch (error) {
       console.error('Erreur lors du chargement des conversations:', error);
@@ -394,13 +426,13 @@ const ChatInterface: React.FC = () => {
       const openRouterKey = localStorage.getItem('tetika-openrouter-key') || '';
       const notdiamondKey = localStorage.getItem('tetika-notdiamond-key') || '';
       const serpapiKey = localStorage.getItem('tetika-serpapi-key') || '';
-      
-      // Préparer les données à envoyer
+        // Préparer les données à envoyer
       const requestBody = {
         messages: messagesForAPI,
         model: modelObject,
         mode: mode,
         hasAttachedFile: !!currentFile,
+        ragProvider: selectedRAGProvider,
         apiKeys: {
           openrouter: openRouterKey,
           notdiamond: notdiamondKey,
@@ -767,9 +799,7 @@ const ChatInterface: React.FC = () => {
               </svg>
               <span className="hidden md:inline">Changer de modèle</span>
               <span className="md:hidden hidden xs:inline">{currentModelName}</span>
-            </button>
-
-            <button
+            </button>            <button
               onClick={() => setShowFileUploader(true)}
               className={`px-2 py-1 rounded-lg text-xs transition-all duration-300 shadow-lg hover:scale-105 flex items-center gap-1
                 ${theme === 'dark' 
@@ -780,6 +810,20 @@ const ChatInterface: React.FC = () => {
               </svg>
               <span className="hidden md:inline">Uploader un fichier</span>
               <span className="md:hidden hidden xs:inline">Upload</span>
+            </button>
+
+            <button
+              onClick={() => window.open('/mcp-agent', '_blank')}
+              className={`px-2 py-1 rounded-lg text-xs transition-all duration-300 shadow-lg hover:scale-105 flex items-center gap-1
+                ${theme === 'dark' 
+                  ? 'bg-gradient-to-r from-purple-600/30 to-pink-600/30 hover:from-purple-600/40 hover:to-pink-600/40 text-purple-300 border border-purple-800' 
+                  : 'bg-gradient-to-r from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 text-purple-700 border border-purple-200'}`}
+              title="Ouvrir l'interface MCP Agent"
+            >              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span className="hidden md:inline">MCP Agent</span>
+              <span className="md:hidden hidden xs:inline">MCP</span>
             </button>
           </div>
         </div>
@@ -1036,12 +1080,12 @@ const ChatInterface: React.FC = () => {
                   : 'border-gray-200 bg-gradient-to-r from-white via-gray-50 to-white shadow-lg shadow-blue-200/10'
               }`}
             >
-              <div className="max-w-4xl mx-auto">
-                <ChatInput 
+              <div className="max-w-4xl mx-auto">                <ChatInput 
                   onSendMessage={handleSendMessage}
                   loading={loading}
                   theme={theme}
                   ragMode={ragMode}
+                  selectedRAGProvider={selectedRAGProvider}
                   onRagModeChange={toggleRagMode}
                   onFileUploadClick={() => setShowFileUploader(true)}
                   selectedFile={selectedFile}

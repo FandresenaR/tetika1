@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChatMode } from '@/types';
+import { getRAGProviderById } from '@/lib/rag-providers';
 
 interface ChatInputProps {
   onSendMessage: (message: string, mode: ChatMode, file: File | null) => void;
   loading: boolean;
   theme: 'dark' | 'light';
   ragMode: boolean;
+  selectedRAGProvider?: string;
   onRagModeChange: (enabled: boolean) => void;
   onFileUploadClick: () => void;
   selectedFile: File | null;
@@ -20,6 +22,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   loading,
   theme,
   ragMode,
+  selectedRAGProvider,
   onRagModeChange,  onFileUploadClick,
   selectedFile,
   onCancelFileUpload,
@@ -35,6 +38,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
       setMessage('');
     }
   }, [message, ragMode, selectedFile, onSendMessage]);
+  // Get the current RAG provider info
+  const currentProvider = selectedRAGProvider ? getRAGProviderById(selectedRAGProvider) : null;
+
+  // Debug temporaire pour voir la valeur du provider
+  useEffect(() => {
+    console.log('[ChatInput] selectedRAGProvider:', selectedRAGProvider);
+    console.log('[ChatInput] currentProvider:', currentProvider);
+  }, [selectedRAGProvider, currentProvider]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -103,7 +114,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             ${ragMode
               ? theme === 'dark' ? 'text-blue-200' : 'text-blue-700'
               : theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-            {ragMode ? 'RAG' : 'STD'}
+            {ragMode ? (currentProvider?.name || 'RAG') : 'STD'}
           </span>
 
           <div className={`relative w-8 h-4 flex items-center transition-all duration-300 rounded-full
@@ -238,9 +249,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
             {message.trim() && !loading && ragMode && (
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-400 rounded-full animate-ping opacity-70"></span>
             )}
-          </button>
-        )}
-      </div>      <style jsx global>{`
+          </button>        )}
+      </div>
+      
+      <style jsx global>{`
         @keyframes pulse-slow {
           0%, 100% {
             transform: scaleX(0.1);
@@ -251,11 +263,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
             transform: scaleX(1);
             transform-origin: left;
             opacity: 0.8;
-          }        }
+          }
+        }
         .animate-pulse-slow {
           animation: pulse-slow 3s infinite;
         }
-          /* Les styles pour le bouton des paramètres mobile ont été déplacés directement dans le composant */
         
         .file-icon:hover {
           transform: scale(1.1);

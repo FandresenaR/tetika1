@@ -1,0 +1,267 @@
+{
+  "description": "Enhanced hybrid web search configuration for Tetika MCP with detailed provider settings",
+  "version": "2.0.0",
+  "fallback_strategy": "cascade",
+  "timeout_ms": 30000,
+  "max_retries": 2,
+  "quality_threshold": 0.7,
+  
+  "providers": {
+    "searxng": {
+      "id": "searxng",
+      "name": "SearXNG Meta-Search",
+      "type": "mcp_server",
+      "priority": 1,
+      "enabled": true,
+      "cost_score": 0.1,
+      "quality_score": 0.9,
+      "speed_score": 0.8,
+      "config": {
+        "server_url": "http://localhost:5488/sse",
+        "transport": "sse",
+        "tools": ["web_search", "web_url_read"],
+        "searxng_instance": "http://localhost:8888",
+        "engines": ["google", "duckduckgo", "bing", "startpage"],
+        "max_results": 10,
+        "timeout": 15000
+      },
+      "routing_rules": {
+        "preferred_for": ["general", "news", "academic", "multilingual"],
+        "avoid_for": ["real_time", "location_specific"],
+        "query_patterns": [".*"]
+      }
+    },
+    
+    "google_custom_search": {
+      "id": "google_cse",
+      "name": "Google Custom Search",
+      "type": "mcp_server", 
+      "priority": 2,
+      "enabled": true,
+      "cost_score": 0.6,
+      "quality_score": 0.95,
+      "speed_score": 0.9,
+      "config": {
+        "server_command": "npx",
+        "server_args": ["-y", "@adenot/mcp-google-search"],
+        "transport": "stdio",
+        "tools": ["search", "read_webpage"],
+        "api_key_env": "GOOGLE_API_KEY",
+        "search_engine_id_env": "GOOGLE_SEARCH_ENGINE_ID",
+        "max_results": 10,
+        "timeout": 10000
+      },
+      "routing_rules": {
+        "preferred_for": ["precise", "technical", "recent", "english"],
+        "avoid_for": ["privacy_sensitive"],
+        "query_patterns": ["tech.*", "how to.*", "what is.*", ".*programming.*"]
+      }
+    },
+    
+    "fetch_mcp": {
+      "id": "fetch_mcp",
+      "name": "Fetch MCP Server",
+      "type": "mcp_server",
+      "priority": 3,
+      "enabled": true,
+      "cost_score": 0.3,
+      "quality_score": 0.85,
+      "speed_score": 0.95,
+      "config": {
+        "server_command": "uvx",
+        "server_args": ["mcp-server-fetch"],
+        "transport": "stdio",
+        "tools": ["fetch"],
+        "user_agent": "TetikaMCP/1.0",
+        "ignore_robots_txt": false,
+        "proxy_url": null,
+        "timeout": 30000
+      },
+      "routing_rules": {
+        "preferred_for": ["single_url", "content_extraction", "document_fetch"],
+        "avoid_for": ["search_queries"],
+        "query_patterns": ["https?://.*", ".*\\.pdf", ".*\\.doc.*"]
+      }
+    },
+    
+    "rag_web_browser": {
+      "id": "rag_web_browser",
+      "name": "Apify RAG Web Browser",
+      "type": "mcp_server",
+      "priority": 4,
+      "enabled": false,
+      "cost_score": 0.8,
+      "quality_score": 0.95,
+      "speed_score": 0.7,
+      "config": {
+        "server_command": "npx",
+        "server_args": ["@apify/mcp-server-rag-web-browser"],
+        "transport": "stdio",
+        "tools": ["search"],
+        "api_token_env": "APIFY_TOKEN",
+        "max_results": 5,
+        "scraping_tool": "raw-http",
+        "output_formats": ["markdown"],
+        "timeout": 40000
+      },
+      "routing_rules": {
+        "preferred_for": ["js_heavy_sites", "complex_scraping", "structured_data"],
+        "avoid_for": ["simple_queries", "fast_responses"],
+        "query_patterns": [".*ecommerce.*", ".*dynamic.*", ".*spa.*"]
+      }
+    },
+    
+    "serper": {
+      "id": "serper",
+      "name": "Serper.dev API",
+      "type": "api_direct",
+      "priority": 5,
+      "enabled": false,
+      "cost_score": 0.5,
+      "quality_score": 0.9,
+      "speed_score": 0.95,
+      "config": {
+        "api_url": "https://google.serper.dev/search",
+        "api_key_env": "SERPER_API_KEY",
+        "headers": {
+          "X-API-KEY": "${SERPER_API_KEY}",
+          "Content-Type": "application/json"
+        },
+        "max_results": 10,
+        "timeout": 8000
+      },
+      "routing_rules": {
+        "preferred_for": ["real_time", "trending", "location_based"],
+        "avoid_for": ["privacy_sensitive"],
+        "query_patterns": [".*news.*", ".*current.*", ".*location.*", ".*near me.*"]
+      }
+    },
+    
+    "serpapi_legacy": {
+      "id": "serpapi",
+      "name": "SerpAPI (Legacy/Fallback)",
+      "type": "api_direct",
+      "priority": 10,
+      "enabled": true,
+      "cost_score": 0.9,
+      "quality_score": 0.85,
+      "speed_score": 0.8,
+      "config": {
+        "api_url": "http://localhost:3001/api/search",
+        "api_key_env": "SERPAPI_KEY",
+        "timeout": 15000,
+        "max_results": 10
+      },
+      "routing_rules": {
+        "preferred_for": ["fallback"],
+        "avoid_for": [],
+        "query_patterns": [".*"]
+      }
+    }
+  },
+  
+  "routing_strategies": {
+    "smart_cascade": {
+      "description": "Try providers in order of preference based on query analysis",
+      "steps": [
+        {
+          "condition": "is_url(query)",
+          "providers": ["fetch_mcp", "rag_web_browser"]
+        },
+        {
+          "condition": "is_technical_query(query)",
+          "providers": ["google_cse", "searxng", "serpapi"]
+        },
+        {
+          "condition": "is_news_query(query)",
+          "providers": ["serper", "searxng", "google_cse"]
+        },
+        {
+          "condition": "is_privacy_sensitive(query)",
+          "providers": ["searxng", "fetch_mcp"]
+        },
+        {
+          "condition": "default",
+          "providers": ["searxng", "google_cse", "serpapi"]
+        }
+      ]
+    },
+    
+    "parallel_best": {
+      "description": "Query multiple providers in parallel and return best result",
+      "max_parallel": 3,
+      "selection_criteria": ["quality_score", "response_time", "result_count"],
+      "providers": ["searxng", "google_cse", "serper"]
+    },
+    
+    "cost_optimized": {
+      "description": "Prefer lower-cost providers first",
+      "steps": [
+        {
+          "condition": "default",
+          "providers": ["searxng", "fetch_mcp", "serper", "google_cse", "rag_web_browser", "serpapi"]
+        }
+      ]
+    }
+  },
+  
+  "query_analysis": {
+    "url_patterns": [
+      "^https?://.*",
+      ".*\\.(pdf|doc|docx|txt|html)$"
+    ],
+    "technical_patterns": [
+      ".*programming.*",
+      ".*code.*",
+      ".*algorithm.*",
+      ".*software.*",
+      "how to.*",
+      ".*tutorial.*",
+      ".*documentation.*"
+    ],
+    "news_patterns": [
+      ".*news.*",
+      ".*breaking.*",
+      ".*latest.*",
+      ".*today.*",
+      ".*current.*",
+      ".*recent.*"
+    ],
+    "privacy_sensitive_patterns": [
+      ".*personal.*",
+      ".*private.*",
+      ".*confidential.*",
+      ".*sensitive.*"
+    ]
+  },
+  
+  "result_processing": {
+    "deduplication": {
+      "enabled": true,
+      "similarity_threshold": 0.8,
+      "merge_similar": true
+    },
+    "quality_filters": {
+      "min_content_length": 50,
+      "remove_ads": true,
+      "remove_spam": true,
+      "verify_links": false
+    },
+    "ranking": {
+      "factors": ["relevance", "authority", "freshness", "completeness"],
+      "weights": [0.4, 0.3, 0.2, 0.1]
+    }
+  },
+  
+  "monitoring": {
+    "track_performance": true,
+    "log_queries": true,
+    "alert_on_failures": true,
+    "metrics": {
+      "response_time": true,
+      "success_rate": true,
+      "cost_tracking": true,
+      "quality_scores": true
+    }
+  }
+}

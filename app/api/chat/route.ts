@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Message, ChatMode } from '@/types';
 import { callAIModel } from '@/lib/api';
 import { enhanceWithRAG } from '@/lib/rag-helper';
+import { enhanceWithMultiProviderRAG } from '@/lib/multi-provider-rag';
 import { extractMistralResponse, extractFromTruncatedResponse } from '@/lib/llm-utils';
 
 interface Source {
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const { messages, model, mode, hasAttachedFile, apiKeys } = requestData;
+    const { messages, model, mode, hasAttachedFile, apiKeys, ragProvider } = requestData;
     
     // Vérifier que les données requises sont présentes
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -192,16 +193,17 @@ Si tu as les informations nécessaires, ignore cette instruction et réponds nor
           // Fallback à la clé du serveur
           serpApiKey = process.env.SERPAPI_API_KEY || '';
         }
-        
-        if (!serpApiKey) {
-          console.error('Aucune clé SerpAPI configurée');
-          return NextResponse.json({ error: 'SerpAPI key is not configured' }, { status: 500 });
+          if (!serpApiKey && !ragProvider) {
+          console.error('Aucune clé SerpAPI configurée et aucun fournisseur RAG spécifié');
+          return NextResponse.json({ error: 'No RAG provider configured' }, { status: 500 });
         }
         
-        // Use our new enhanceWithRAG utility
-        const ragResults = await enhanceWithRAG(lastUserMessage.content, serpApiKey);
+        // Use the new multi-provider RAG helper
+        const ragResults = ragProvider 
+          ? await enhanceWithMultiProviderRAG(lastUserMessage.content, ragProvider, apiKeys)
+          : await enhanceWithRAG(lastUserMessage.content, serpApiKey);
         
-        if (ragResults.error) {
+        if ('error' in ragResults && ragResults.error) {
           console.warn(`RAG enhancement warning: ${ragResults.error}`);
         }
         

@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "tetika-agent": {
+      "command": "node",
+      "args": ["./mcp/servers/tetika-agent.js"],
+      "env": {
+        "OPENROUTER_API_KEY": "",
+        "SERPAPI_API_KEY": ""
+      }
+    },
+    "tetika-agent-with-fetch": {
+      "command": "node",
+      "args": ["./mcp/servers/tetika-agent-with-fetch.js"],
+      "env": {
+        "OPENROUTER_API_KEY": "",
+        "SERPAPI_API_KEY": ""
+      }
+    }
+  }
+}

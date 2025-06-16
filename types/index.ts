@@ -52,3 +52,18 @@ export interface AIProviderConfig {
 }
 
 export type ChatMode = 'standard' | 'rag';
+
+export interface RAGProvider {
+  id: string;
+  name: string;
+  description: string;
+  requiresApiKey: boolean;
+  apiKeyLabel?: string;
+  priority: number; // Lower number = higher priority
+  isDefault?: boolean;
+}
+
+export interface RAGConfig {
+  selectedProvider: string;
+  providers: RAGProvider[];
+}

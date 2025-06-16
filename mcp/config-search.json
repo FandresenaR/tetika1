@@ -1,0 +1,87 @@
+{
+  "mcpServers": {
+    "tetika-agent": {
+      "command": "node",
+      "args": ["./mcp/servers/tetika-agent.js"],
+      "env": {
+        "OPENROUTER_API_KEY": "",
+        "SERPAPI_API_KEY": ""
+      }
+    },
+    "searxng-search": {
+      "command": "npx",
+      "args": [
+        "@erhwenkuo/mcp-searxng",
+        "--searxng-base-url=https://searx.be",
+        "--max-results=10"
+      ],
+      "env": {}
+    },
+    "fetch-mcp": {
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-fetch",
+        "--user-agent=TetikaChatApp/1.0",
+        "--ignore-robots-txt=false"
+      ],
+      "env": {}
+    },
+    "exa-search": {
+      "command": "npx",
+      "args": [
+        "@exa-labs/exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": ""
+      }
+    },
+    "google-search": {
+      "command": "npx",
+      "args": [
+        "@adenot/mcp-google-search"
+      ],
+      "env": {
+        "GOOGLE_API_KEY": "",
+        "GOOGLE_SEARCH_ENGINE_ID": ""
+      }
+    },
+    "serper-search": {
+      "command": "npx",
+      "args": [
+        "@garymengcom/serper-mcp-server"
+      ],
+      "env": {
+        "SERPER_API_KEY": ""
+      }
+    },
+    "rag-web-browser": {
+      "command": "npx",
+      "args": [
+        "@apify/mcp-server-rag-web-browser"
+      ],
+      "env": {
+        "APIFY_TOKEN": ""
+      }
+    }
+  },
+  "searchStrategy": {
+    "primary": "searxng-search",
+    "fallback": "serpapi",
+    "specialized": {
+      "ai_queries": "exa-search",
+      "technical_docs": "fetch-mcp",
+      "deep_research": "rag-web-browser"
+    },
+    "routing_rules": {
+      "ai_keywords": ["machine learning", "neural network", "artificial intelligence", "AI", "ML"],
+      "technical_keywords": ["documentation", "API", "tutorial", "guide"],
+      "research_keywords": ["analysis", "study", "research", "report"]
+    }
+  },
+  "performance_monitoring": {
+    "track_response_time": true,
+    "track_result_quality": true,
+    "fallback_threshold_ms": 5000,
+    "max_retries": 3
+  }
+}
