@@ -50,9 +50,13 @@ const ChatInterface: React.FC = () => {
   
   // État pour le fichier sélectionné
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
-  // État pour détecter si l'écran est mobile
+    // État pour détecter si l'écran est mobile
   const [isMobile, setIsMobile] = useState(false);
+  
+  // États pour les sections collapsibles des exemples
+  const [showRagExamples, setShowRagExamples] = useState(false);
+  const [showMcpExamples, setShowMcpExamples] = useState(false);
+  
   // Anciennement pour les suggestions RAG - supprimé
     // Fonction pour détecter si on est sur mobile
   useEffect(() => {
@@ -709,11 +713,29 @@ const ChatInterface: React.FC = () => {
       setShowCodeSidebar, 
       sidebarCode, 
       setSidebarCode 
-    }}>      <div className={`flex flex-col h-screen transition-colors duration-300 ${themeClasses}`}>
-        {/* Component to check if the browser supports speech synthesis */}
+    }}>      <div className={`flex flex-col h-screen transition-colors duration-300 ${themeClasses}`}>        {/* Component to check if the browser supports speech synthesis */}
         <SpeechSynthesisCheck />
         {/* Bouton de paramètres */}
         <SettingsButton />
+          {/* MCP Agent Button - Positioned to avoid header conflicts */}
+        <div className="fixed top-16 right-4 z-20">
+          <button
+            onClick={() => window.open('/mcp-agent', '_blank')}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 hover:scale-105 border shadow-lg
+              ${theme === 'dark' 
+                ? 'bg-purple-900/90 backdrop-blur-sm border-purple-600/50 text-purple-200 hover:bg-purple-800/95 hover:border-purple-500' 
+                : 'bg-purple-50/90 backdrop-blur-sm border-purple-200 text-purple-700 hover:bg-purple-100/95 hover:border-purple-300'}`}
+            title="Ouvrir l'Agent MCP - Tâches autonomes complexes"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+            <span className="text-sm font-medium hidden sm:inline">Agent MCP</span>
+            <span className="text-xs font-medium sm:hidden">MCP</span>
+            <div className={`w-2 h-2 rounded-full animate-pulse
+              ${theme === 'dark' ? 'bg-purple-400' : 'bg-purple-500'}`}></div>
+          </button>
+        </div>
         {/* Header with model selector - now fixed at the top */}
         <div className={`sticky top-0 z-20 flex items-center justify-between px-2 py-2 border-b transition-all duration-300 ${headerClasses} backdrop-blur shadow-lg`}>
           <div className="flex items-center gap-2.5">
@@ -857,11 +879,10 @@ const ChatInterface: React.FC = () => {
           <div 
             className={`relative flex flex-col flex-grow h-full overflow-hidden transition-all duration-300 ease-in-out
               ${showCodeSidebar ? 'md:max-w-[calc(100%-55%)] lg:max-w-[calc(100%-45%)] xl:max-w-[calc(100%-38%)]' : 'w-full'}`}
-          >          
-            {/* Chat messages container */}
+          >            {/* Chat messages container */}
             <div 
               ref={chatContainerRef}
-              className={`flex-grow overflow-y-auto py-4 pb-14 sm:pb-16 md:pb-10 px-3 sm:px-6 transition-all duration-300
+              className={`flex-grow overflow-y-auto pt-8 pb-14 sm:pb-16 md:pb-10 px-3 sm:px-6 transition-all duration-300
                 ${theme === 'dark' 
                   ? 'bg-gradient-to-b from-gray-950 to-gray-900 bg-mesh-pattern' 
                   : 'bg-gradient-to-b from-gray-50 to-white bg-mesh-pattern-light'}`}
@@ -906,10 +927,72 @@ const ChatInterface: React.FC = () => {
                             : 'bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 border border-blue-200 hover:from-blue-200 hover:to-cyan-200'}`}>
                           Mode RAG (recherche web)
                         </button>
-                      </div>
-                      <span className="text-xs mt-2 opacity-75">Activer la recherche web pour des réponses enrichies avec des sources</span>
+                      </div>                      <span className="text-xs mt-2 opacity-75">Activer la recherche web pour des réponses enrichies avec des sources</span>
                       
-                      {/* Exemples de prompts pour démonstration client */}
+                      {/* MCP Agent Showcase Section */}
+                      <div className={`mt-8 w-full max-w-lg rounded-lg p-4 transition-all border-2
+                        ${theme === 'dark' 
+                          ? 'bg-gradient-to-br from-purple-900/20 to-indigo-900/20 border-purple-600/30' 
+                          : 'bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200/50'}`}>
+                        <div className="flex items-center mb-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3
+                            ${theme === 'dark' ? 'bg-purple-600/20' : 'bg-purple-100'}`}>
+                            <svg className={`w-4 h-4 ${theme === 'dark' ? 'text-purple-400' : 'text-purple-600'}`} fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                            </svg>
+                          </div>
+                          <h3 className={`text-sm font-semibold ${theme === 'dark' ? 'text-purple-300' : 'text-purple-700'}`}>
+                            🚀 Mode Agent MCP - Tâches Autonomes
+                          </h3>
+                        </div>
+                          <p className={`text-xs mb-4 ${theme === 'dark' ? 'text-purple-200/80' : 'text-purple-600/80'}`}>
+                          L&apos;Agent MCP peut exécuter des tâches complexes de manière autonome en utilisant plusieurs outils et sources.
+                        </p>
+                        
+                        <div 
+                          onClick={() => {
+                            window.open('/mcp-agent', '_blank');
+                          }}
+                          className={`cursor-pointer p-3 rounded-lg transition-all hover:scale-[1.02] transform
+                            ${theme === 'dark' 
+                              ? 'bg-purple-800/40 border border-purple-700/50 hover:bg-purple-800/60' 
+                              : 'bg-white border border-purple-200 hover:bg-purple-50 hover:border-purple-300'}`}>
+                          <div className="flex items-start">
+                            <div className={`w-6 h-6 rounded flex items-center justify-center mr-3 mt-0.5
+                              ${theme === 'dark' ? 'bg-purple-600' : 'bg-purple-500'}`}>
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M9,5V9H21V5M9,19H21V15H9M9,14H21V10H9M4,9H8L6,7M4,19H8L6,17M4,14H8L6,12"/>
+                              </svg>
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-sm font-medium ${theme === 'dark' ? 'text-purple-200' : 'text-purple-700'}`}>
+                                Analyse de marché IA complète
+                              </p>
+                              <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-purple-300/70' : 'text-purple-600/70'}`}>
+                                Recherche + Analyse + Rapport avec graphiques et sources
+                              </p>
+                              <div className="flex items-center mt-2">
+                                <span className={`text-xs px-2 py-1 rounded-full mr-2
+                                  ${theme === 'dark' 
+                                    ? 'bg-purple-700/60 text-purple-200' 
+                                    : 'bg-purple-100 text-purple-700'}`}>
+                                  Multi-outils
+                                </span>
+                                <span className={`text-xs px-2 py-1 rounded-full
+                                  ${theme === 'dark' 
+                                    ? 'bg-indigo-700/60 text-indigo-200' 
+                                    : 'bg-indigo-100 text-indigo-700'}`}>
+                                  Autonome
+                                </span>
+                              </div>
+                            </div>
+                            <div className={`text-xs ${theme === 'dark' ? 'text-purple-400' : 'text-purple-500'}`}>
+                              →
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                        {/* Exemples de prompts pour démonstration client */}
                       <div className={`mt-8 w-full max-w-lg rounded-lg p-4 transition-all
                         ${theme === 'dark' 
                           ? 'bg-gray-800/60 border border-gray-700/50' 
@@ -917,96 +1000,225 @@ const ChatInterface: React.FC = () => {
                         <h3 className={`text-sm font-medium mb-3 ${theme === 'dark' ? 'text-blue-300' : 'text-blue-600'}`}>
                           Exemples de prompts pour démo
                         </h3>
-                        <div className="space-y-2">
-                          {/* Exemples qui encouragent l'utilisation du RAG */}
-                          <div 
-                            onClick={() => {
-                              setRagMode(true);
-                              handleSendMessage("Quelles sont les dernières avancées en matière d&apos;intelligence artificielle générative?", "rag");
-                            }}
-                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
-                              ${theme === 'dark' 
-                                ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
-                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                              &quot;Quelles sont les dernières avancées en matière d&apos;intelligence artificielle générative?&quot;
-                            </p>
-                            <div className="flex items-center mt-1">
-                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                        
+                        <div className="space-y-3">
+                          {/* Bouton RAG Demo */}
+                          <div>
+                            <button
+                              onClick={() => setShowRagExamples(!showRagExamples)}
+                              className={`w-full flex items-center justify-between p-2 rounded-lg transition-all hover:scale-[1.01]
                                 ${theme === 'dark' 
-                                  ? 'bg-blue-800/60 text-blue-300'
-                                  : 'bg-blue-100 text-blue-700'}`}>
-                                RAG
-                              </span>
-                              <span className="text-xs opacity-70">Obtient des informations à jour depuis le web</span>
-                            </div>
+                                  ? 'bg-blue-900/40 hover:bg-blue-900/60 border border-blue-800/60 text-blue-200' 
+                                  : 'bg-blue-100 hover:bg-blue-200 border border-blue-200 text-blue-700'}`}>
+                              <div className="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                <span className="font-medium">RAG Demo</span>
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full
+                                  ${theme === 'dark' 
+                                    ? 'bg-blue-800/60 text-blue-300' 
+                                    : 'bg-blue-200 text-blue-700'}`}>
+                                  4 exemples
+                                </span>
+                              </div>
+                              <svg 
+                                xmlns="http://www.w3.org/2000/svg" 
+                                className={`h-4 w-4 transition-transform ${showRagExamples ? 'rotate-180' : ''}`} 
+                                fill="none" 
+                                viewBox="0 0 24 24" 
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                            
+                            {showRagExamples && (
+                              <div className="mt-2 space-y-2 pl-4">
+                                <div 
+                                  onClick={() => {
+                                    setRagMode(true);
+                                    handleSendMessage("Quelles sont les dernières avancées en matière d&apos;intelligence artificielle générative?", "rag");
+                                  }}
+                                  className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                                    ${theme === 'dark' 
+                                      ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                                      : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
+                                  <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                                    &quot;Quelles sont les dernières avancées en matière d&apos;intelligence artificielle générative?&quot;
+                                  </p>
+                                  <div className="flex items-center mt-1">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                      ${theme === 'dark' 
+                                        ? 'bg-blue-800/60 text-blue-300'
+                                        : 'bg-blue-100 text-blue-700'}`}>
+                                      RAG
+                                    </span>
+                                    <span className="text-xs opacity-70">Obtient des informations à jour depuis le web</span>
+                                  </div>
+                                </div>
+                                
+                                <div 
+                                  onClick={() => {
+                                    setRagMode(true);
+                                    handleSendMessage("Explique-moi la situation actuelle entre l&apos;Ukraine et la Russie", "rag");
+                                  }}
+                                  className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                                    ${theme === 'dark' 
+                                      ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                                      : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
+                                  <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                                    &quot;Explique-moi la situation actuelle entre l&apos;Ukraine et la Russie&quot;
+                                  </p>
+                                  <div className="flex items-center mt-1">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                      ${theme === 'dark' 
+                                        ? 'bg-blue-800/60 text-blue-300' 
+                                        : 'bg-blue-100 text-blue-700'}`}>
+                                      RAG
+                                    </span>
+                                    <span className="text-xs opacity-70">Recherches des infos récentes sur des événements actuels</span>
+                                  </div>
+                                </div>
+                                
+                                <div 
+                                  onClick={() => {
+                                    setRagMode(true);
+                                    handleSendMessage("Quelles sont les meilleures pratiques pour développer une application React en 2025?", "rag");
+                                  }}
+                                  className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                                    ${theme === 'dark' 
+                                      ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                                      : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
+                                  <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                                    &quot;Quelles sont les meilleures pratiques pour développer une application React en 2025?&quot;
+                                  </p>
+                                  <div className="flex items-center mt-1">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                      ${theme === 'dark' 
+                                        ? 'bg-blue-800/60 text-blue-300' 
+                                        : 'bg-blue-100 text-blue-700'}`}>
+                                      RAG
+                                    </span>
+                                    <span className="text-xs opacity-70">Recherche des informations techniques récentes</span>
+                                  </div>
+                                </div>
+                                
+                                <div 
+                                  onClick={() => {
+                                    setRagMode(true);
+                                    handleSendMessage("Quels sont les impacts du changement climatique observés en 2025?", "rag");
+                                  }}
+                                  className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                                    ${theme === 'dark' 
+                                      ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
+                                      : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>
+                                  <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
+                                    &quot;Quels sont les impacts du changement climatique observés en 2025?&quot;
+                                  </p>
+                                  <div className="flex items-center mt-1">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                      ${theme === 'dark' 
+                                        ? 'bg-blue-800/60 text-blue-300' 
+                                        : 'bg-blue-100 text-blue-700'}`}>
+                                      RAG
+                                    </span>
+                                    <span className="text-xs opacity-70">Accède aux données environnementales récentes</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          
-                          <div 
-                            onClick={() => {
-                              setRagMode(true);
-                              handleSendMessage("Explique-moi la situation actuelle entre l&apos;Ukraine et la Russie", "rag");
-                            }}
-                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
-                              ${theme === 'dark' 
-                                ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
-                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                              &quot;Explique-moi la situation actuelle entre l&apos;Ukraine et la Russie&quot;
-                            </p>
-                            <div className="flex items-center mt-1">
-                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+
+                          {/* Bouton AGENT MCP Demo */}
+                          <div>
+                            <button
+                              onClick={() => setShowMcpExamples(!showMcpExamples)}
+                              className={`w-full flex items-center justify-between p-2 rounded-lg transition-all hover:scale-[1.01]
                                 ${theme === 'dark' 
-                                  ? 'bg-blue-800/60 text-blue-300' 
-                                  : 'bg-blue-100 text-blue-700'}`}>
-                                RAG
-                              </span>
-                              <span className="text-xs opacity-70">Recherches des infos récentes sur des événements actuels</span>
-                            </div>
+                                  ? 'bg-purple-900/40 hover:bg-purple-900/60 border border-purple-800/60 text-purple-200' 
+                                  : 'bg-purple-100 hover:bg-purple-200 border border-purple-200 text-purple-700'}`}>
+                              <div className="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                <span className="font-medium">AGENT MCP Demo</span>
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full
+                                  ${theme === 'dark' 
+                                    ? 'bg-purple-800/60 text-purple-300' 
+                                    : 'bg-purple-200 text-purple-700'}`}>
+                                  2 exemples
+                                </span>
+                              </div>
+                              <svg 
+                                xmlns="http://www.w3.org/2000/svg" 
+                                className={`h-4 w-4 transition-transform ${showMcpExamples ? 'rotate-180' : ''}`} 
+                                fill="none" 
+                                viewBox="0 0 24 24" 
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                            
+                            {showMcpExamples && (
+                              <div className="mt-2 space-y-2 pl-4">                                <div 
+                                  onClick={() => {
+                                    setRagMode(true);
+                                    // Set the provider to fetch-mcp for scraping capabilities
+                                    setSelectedRAGProvider('fetch-mcp');
+                                    localStorage.setItem('tetika-rag-provider', 'fetch-mcp');
+                                    window.dispatchEvent(new CustomEvent('rag-provider-changed', { 
+                                      detail: { providerId: 'fetch-mcp' } 
+                                    }));
+                                    // Send a complex MCP-style message that demonstrates agent capabilities
+                                    handleSendMessage("Analyse les startups IA françaises (scraping de sites, LinkedIn, actualités), compare leurs technologies et investissements, puis génère un rapport d'investissement complet avec graphiques et recommandations", "rag");
+                                  }}
+                                  className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                                    ${theme === 'dark' 
+                                      ? 'bg-gradient-to-r from-purple-900/30 to-indigo-900/30 border border-purple-800/40 hover:from-purple-900/40 hover:to-indigo-900/40' 
+                                      : 'bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 hover:from-purple-100/70 hover:to-indigo-100/70'}`}>
+                                  <p className={`text-sm ${theme === 'dark' ? 'text-purple-200' : 'text-purple-700'}`}>
+                                    &quot;Analyse les startups IA françaises et génère un rapport d&apos;investissement complet&quot;
+                                  </p>
+                                  <div className="flex items-center mt-1">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                      ${theme === 'dark' 
+                                        ? 'bg-purple-800/60 text-purple-300' 
+                                        : 'bg-purple-100 text-purple-700'}`}>
+                                      AGENT MCP
+                                    </span>
+                                    <span className="text-xs opacity-70">Scraping multi-sources + analyse + rapport structuré</span>
+                                  </div>
+                                </div>
+                                
+                                <div 
+                                  onClick={() => {
+                                    // Navigate to MCP Agent page for this complex task
+                                    window.open('/mcp-agent', '_blank');
+                                  }}
+                                  className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
+                                    ${theme === 'dark' 
+                                      ? 'bg-purple-900/30 border border-purple-800/40 hover:bg-purple-900/40' 
+                                      : 'bg-purple-50 border border-purple-100 hover:bg-purple-100/70'}`}>
+                                  <p className={`text-sm ${theme === 'dark' ? 'text-purple-200' : 'text-purple-700'}`}>
+                                    &quot;Recherche les dernières innovations en IA, analyse les tendances et créer un rapport détaillé avec sources&quot;
+                                  </p>
+                                  <div className="flex items-center mt-1">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded mr-2
+                                      ${theme === 'dark' 
+                                        ? 'bg-purple-800/60 text-purple-300' 
+                                        : 'bg-purple-100 text-purple-700'}`}>
+                                      MCP AGENT
+                                    </span>
+                                    <span className="text-xs opacity-70">Tâche complexe multi-étapes avec outils autonomes</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          
-                          <div 
-                            onClick={() => {
-                              setRagMode(true);
-                              handleSendMessage("Quelles sont les meilleures pratiques pour développer une application React en 2025?", "rag");
-                            }}
-                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
-                              ${theme === 'dark' 
-                                ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
-                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                              &quot;Quelles sont les meilleures pratiques pour développer une application React en 2025?&quot;
-                            </p>
-                            <div className="flex items-center mt-1">
-                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
-                                ${theme === 'dark' 
-                                  ? 'bg-blue-800/60 text-blue-300' 
-                                  : 'bg-blue-100 text-blue-700'}`}>
-                                RAG
-                              </span>
-                              <span className="text-xs opacity-70">Recherche des informations techniques récentes</span>
-                            </div>
-                          </div>
-                          
-                          <div 
-                            onClick={() => {
-                              setRagMode(true);
-                              handleSendMessage("Quels sont les impacts du changement climatique observés en 2025?", "rag");
-                            }}
-                            className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
-                              ${theme === 'dark' 
-                                ? 'bg-blue-900/30 border border-blue-800/40 hover:bg-blue-900/40' 
-                                : 'bg-blue-50 border border-blue-100 hover:bg-blue-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-700'}`}>
-                              &quot;Quels sont les impacts du changement climatique observés en 2025?&quot;
-                            </p>
-                            <div className="flex items-center mt-1">
-                              <span className={`text-xs px-1.5 py-0.5 rounded mr-2
-                                ${theme === 'dark' 
-                                  ? 'bg-blue-800/60 text-blue-300' 
-                                  : 'bg-blue-100 text-blue-700'}`}>
-                                RAG
-                              </span>
-                              <span className="text-xs opacity-70">Accède aux données environnementales récentes</span>
-                            </div>
-                          </div>
-                          
+
+                          {/* Exemple standard (toujours visible) */}
                           <div 
                             onClick={() => {
                               setRagMode(false);
@@ -1015,7 +1227,8 @@ const ChatInterface: React.FC = () => {
                             className={`cursor-pointer p-2 rounded transition-all hover:scale-[1.01]
                               ${theme === 'dark' 
                                 ? 'bg-gray-800/80 border border-gray-700/60 hover:bg-gray-800' 
-                                : 'bg-gray-50 border border-gray-200 hover:bg-gray-100/70'}`}>                            <p className={`text-sm ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                                : 'bg-gray-50 border border-gray-200 hover:bg-gray-100/70'}`}>
+                            <p className={`text-sm ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
                               &quot;Rédige un court poème sur l&apos;intelligence artificielle&quot;
                             </p>
                             <div className="flex items-center mt-1">
