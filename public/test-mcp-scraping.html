@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test MCP Scraping System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            border-color: #4CAF50;
+            background: #1e3a1e;
+        }
+        .error {
+            border-color: #f44336;
+            background: #3a1e1e;
+        }
+        .warning {
+            border-color: #ff9800;
+            background: #3a2e1e;
+        }
+        .loading {
+            color: #ffa500;
+        }
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status.success { background: #4CAF50; }
+        .status.error { background: #f44336; }
+        .status.pending { background: #ff9800; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test du Système MCP de Scraping Intelligent</h1>
+        
+        <div class="test-section">
+            <h2>🧠 Test 1: Navigation Intelligente MCP</h2>
+            <p>Test de l'extraction d'entreprises depuis VivaTech en utilisant la navigation intelligente MCP.</p>
+            <button onclick="testIntelligentNavigation()" id="nav-btn">Lancer le test de navigation</button>
+            <div id="nav-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🎯 Test 2: Extraction Directe de Données</h2>
+            <p>Test de l'extraction directe de données d'entreprises avec MCP.</p>
+            <button onclick="testDirectExtraction()" id="extract-btn">Lancer l'extraction directe</button>
+            <div id="extract-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔍 Test 3: Recherche Multi-Providers</h2>
+            <p>Test de la recherche intelligente multi-providers avec MCP.</p>
+            <button onclick="testMultiSearch()" id="search-btn">Lancer la recherche</button>
+            <div id="search-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🌐 Test 4: API de Scraping Complète</h2>
+            <p>Test de l'API de scraping complète qui utilise MCP en arrière-plan.</p>
+            <button onclick="testScrapingAPI()" id="scraping-btn">Lancer le scraping complet</button>
+            <div id="scraping-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 Résumé des Tests</h2>
+            <div id="summary" class="result">
+                <strong>Tests à exécuter:</strong>
+                <br>• Navigation Intelligente: <span id="nav-status" class="status pending">EN ATTENTE</span>
+                <br>• Extraction Directe: <span id="extract-status" class="status pending">EN ATTENTE</span>
+                <br>• Recherche Multi-Providers: <span id="search-status" class="status pending">EN ATTENTE</span>
+                <br>• API Scraping Complète: <span id="scraping-status" class="status pending">EN ATTENTE</span>
+                <br><br><strong>Score:</strong> <span id="score">0/4</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const TEST_URL = 'https://vivatechnology.com/partners?hashtags=healthcare%2520%2526%2520wellness';
+        
+        let testResults = {
+            navigation: false,
+            extraction: false,
+            search: false,
+            scraping: false
+        };
+
+        function updateStatus(testName, status) {
+            const statusElement = document.getElementById(`${testName}-status`);
+            statusElement.textContent = status === true ? 'SUCCÈS' : status === false ? 'ÉCHEC' : status;
+            statusElement.className = `status ${status === true ? 'success' : status === false ? 'error' : 'pending'}`;
+            
+            const score = Object.values(testResults).filter(Boolean).length;
+            document.getElementById('score').textContent = `${score}/4`;
+        }
+
+        async function testIntelligentNavigation() {
+            const btn = document.getElementById('nav-btn');
+            const result = document.getElementById('nav-result');
+            
+            btn.disabled = true;
+            btn.textContent = 'Test en cours...';
+            result.style.display = 'block';
+            result.className = 'result loading';
+            result.textContent = '🔄 Lancement de la navigation intelligente MCP...';
+            updateStatus('nav', 'EN COURS');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mcp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        tool: 'intelligent_navigation',
+                        args: {
+                            url: TEST_URL,
+                            task: 'extract_companies',
+                            maxResults: 10,
+                            maxPages: 2
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    testResults.navigation = true;
+                    result.className = 'result success';
+                    
+                    let resultText = '✅ Navigation intelligente réussie!\n\n';
+                    
+                    if (data.data?.content?.[0]?.text) {
+                        const navigationData = JSON.parse(data.data.content[0].text);
+                        resultText += `📊 Résultats:\n`;
+                        resultText += `• Succès: ${navigationData.success}\n`;
+                        resultText += `• Entreprises trouvées: ${navigationData.totalFound || 0}\n`;
+                        resultText += `• Méthode: ${navigationData.method || 'Non spécifiée'}\n`;
+                        resultText += `• Pages visitées: ${navigationData.pagesVisited || 1}\n\n`;
+                        
+                        if (navigationData.companies && navigationData.companies.length > 0) {
+                            resultText += `🏢 Exemples d'entreprises extraites:\n`;
+                            navigationData.companies.slice(0, 3).forEach((company, index) => {
+                                resultText += `${index + 1}. ${company.name}\n`;
+                                resultText += `   Website: ${company.website || 'Non spécifié'}\n`;
+                                resultText += `   Industry: ${company.industry || 'Non spécifiée'}\n\n`;
+                            });
+                        }
+                    }
+                    
+                    result.textContent = resultText;
+                    updateStatus('nav', true);
+                } else {
+                    throw new Error(data.error || `HTTP ${response.status}`);
+                }
+            } catch (error) {
+                testResults.navigation = false;
+                result.className = 'result error';
+                result.textContent = `❌ Erreur navigation intelligente:\n${error.message}`;
+                updateStatus('nav', false);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Relancer le test de navigation';
+            }
+        }
+
+        async function testDirectExtraction() {
+            const btn = document.getElementById('extract-btn');
+            const result = document.getElementById('extract-result');
+            
+            btn.disabled = true;
+            btn.textContent = 'Extraction en cours...';
+            result.style.display = 'block';
+            result.className = 'result loading';
+            result.textContent = '🔄 Lancement de l\'extraction directe MCP...';
+            updateStatus('extract', 'EN COURS');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mcp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        tool: 'extract_company_data',
+                        args: {
+                            url: TEST_URL,
+                            extractionMode: 'company_directory',
+                            maxResults: 10
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    testResults.extraction = true;
+                    result.className = 'result success';
+                    
+                    let resultText = '✅ Extraction directe réussie!\n\n';
+                    
+                    if (data.data?.content?.[0]?.text) {
+                        const extractData = JSON.parse(data.data.content[0].text);
+                        resultText += `📊 Résultats:\n`;
+                        resultText += `• Succès: ${extractData.success}\n`;
+                        resultText += `• Entreprises extraites: ${extractData.totalFound || 0}\n`;
+                        resultText += `• Mode d'extraction: ${extractData.extractionMode || 'Non spécifié'}\n`;
+                        resultText += `• Méthode: ${extractData.method || 'Non spécifiée'}\n`;
+                    }
+                    
+                    result.textContent = resultText;
+                    updateStatus('extract', true);
+                } else {
+                    throw new Error(data.error || `HTTP ${response.status}`);
+                }
+            } catch (error) {
+                testResults.extraction = false;
+                result.className = 'result error';
+                result.textContent = `❌ Erreur extraction directe:\n${error.message}`;
+                updateStatus('extract', false);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Relancer l\'extraction directe';
+            }
+        }
+
+        async function testMultiSearch() {
+            const btn = document.getElementById('search-btn');
+            const result = document.getElementById('search-result');
+            
+            btn.disabled = true;
+            btn.textContent = 'Recherche en cours...';
+            result.style.display = 'block';
+            result.className = 'result loading';
+            result.textContent = '🔄 Lancement de la recherche multi-providers...';
+            updateStatus('search', 'EN COURS');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mcp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        tool: 'multi_search',
+                        args: {
+                            provider: 'fetch-mcp',
+                            query: 'startups françaises fintech'
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    testResults.search = true;
+                    result.className = 'result success';
+                    
+                    let resultText = '✅ Recherche multi-providers réussie!\n\n';
+                    
+                    if (data.data) {
+                        resultText += `📊 Résultats:\n`;
+                        resultText += `• Provider: ${data.data.provider || 'Non spécifié'}\n`;
+                        resultText += `• Résultats trouvés: ${data.data.results?.length || 0}\n`;
+                        resultText += `• Succès: ${data.data.success}\n\n`;
+                        
+                        if (data.data.results && data.data.results.length > 0) {
+                            resultText += `🔍 Premiers résultats:\n`;
+                            data.data.results.slice(0, 3).forEach((result, index) => {
+                                resultText += `${index + 1}. ${result.title}\n`;
+                                resultText += `   URL: ${result.url}\n`;
+                                resultText += `   Snippet: ${result.snippet?.substring(0, 100)}...\n\n`;
+                            });
+                        }
+                    }
+                    
+                    result.textContent = resultText;
+                    updateStatus('search', true);
+                } else {
+                    throw new Error(data.error || `HTTP ${response.status}`);
+                }
+            } catch (error) {
+                testResults.search = false;
+                result.className = 'result error';
+                result.textContent = `❌ Erreur recherche multi-providers:\n${error.message}`;
+                updateStatus('search', false);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Relancer la recherche';
+            }
+        }
+
+        async function testScrapingAPI() {
+            const btn = document.getElementById('scraping-btn');
+            const result = document.getElementById('scraping-result');
+            
+            btn.disabled = true;
+            btn.textContent = 'Scraping en cours...';
+            result.style.display = 'block';
+            result.className = 'result loading';
+            result.textContent = '🔄 Lancement du scraping complet avec MCP...';
+            updateStatus('scraping', 'EN COURS');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/scraping`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        url: TEST_URL,
+                        maxCompanies: 10,
+                        useMCP: true
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    testResults.scraping = true;
+                    result.className = 'result success';
+                    
+                    let resultText = '✅ API de scraping complète réussie!\n\n';
+                    resultText += `📊 Résultats:\n`;
+                    resultText += `• Succès: ${data.success}\n`;
+                    resultText += `• Entreprises trouvées: ${data.companies?.length || 0}\n`;
+                    resultText += `• Méthode: ${data.method || 'Non spécifiée'}\n`;
+                    resultText += `• Temps d'exécution: ${data.executionTime || 'Non spécifié'}\n\n`;
+                    
+                    if (data.companies && data.companies.length > 0) {
+                        resultText += `🏢 Entreprises extraites:\n`;
+                        data.companies.slice(0, 3).forEach((company, index) => {
+                            resultText += `${index + 1}. ${company.name}\n`;
+                            resultText += `   Website: ${company.website || 'Non spécifié'}\n`;
+                            resultText += `   Description: ${company.description?.substring(0, 100) || 'Non spécifiée'}...\n\n`;
+                        });
+                    }
+                    
+                    result.textContent = resultText;
+                    updateStatus('scraping', true);
+                } else {
+                    throw new Error(data.error || `HTTP ${response.status}`);
+                }
+            } catch (error) {
+                testResults.scraping = false;
+                result.className = 'result error';
+                result.textContent = `❌ Erreur API de scraping:\n${error.message}`;
+                updateStatus('scraping', false);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Relancer le scraping complet';
+            }
+        }
+
+        // Auto-scroll vers les résultats
+        function scrollToResult(elementId) {
+            setTimeout(() => {
+                document.getElementById(elementId).scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'nearest' 
+                });
+            }, 100);
+        }
+    </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import puppeteer from 'puppeteer';
 import { cleanApiKey } from '@/lib/api';
 import { fetchMCPProvider } from '@/lib/fetch-mcp-provider';
 
@@ -858,6 +859,416 @@ async function fetchWebContent(args: Record<string, unknown>) {
   }
 }
 
+// Enhanced company data extraction for VivaTech partners
+async function extractCompanyData(args: Record<string, unknown>) {
+  try {
+    const { url, extractionMode = 'company_directory', maxResults = 50 } = args;
+    
+    if (!url || typeof url !== 'string') {
+      throw new Error('URL is required and must be a string');
+    }
+    
+    console.log(`[MCP] Extracting company data from: ${url}`);
+    console.log(`[MCP] Extraction mode: ${extractionMode}, Max results: ${maxResults}`);
+    
+    // Use Puppeteer for dynamic content loading
+    let browser;
+    try {
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-features=VizDisplayCompositor'
+        ]
+      });
+      
+      const page = await browser.newPage();
+      
+      // Set realistic headers
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
+      await page.setViewport({ width: 1366, height: 768 });
+      
+      // Navigate to the page
+      console.log(`[MCP] Navigating to ${url}...`);
+      await page.goto(url, { 
+        waitUntil: 'networkidle2',
+        timeout: 60000 
+      });
+      
+      // Wait for potential dynamic content
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Extract company data based on VivaTech structure
+      const companies = await page.evaluate(() => {
+        const companyElements = document.querySelectorAll([
+          '.partner-card',
+          '.company-card', 
+          '.exhibitor-card',
+          '[data-testid*="partner"]',
+          '[data-testid*="company"]',
+          '.partner-item',
+          '.grid-item',
+          '.card',
+          '.partner'
+        ].join(', '));
+        
+        console.log(`Found ${companyElements.length} potential company elements`);
+        
+        const extractedCompanies = [];
+        
+        for (let i = 0; i < Math.min(companyElements.length, 50); i++) {
+          const element = companyElements[i];
+          
+          // Extract company name
+          const nameElement = element.querySelector([
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            '.name', '.title', '.company-name',
+            '[data-testid*="name"]',
+            'a[href*="company"]',
+            '.partner-name'
+          ].join(', '));
+          
+          const name = nameElement?.textContent?.trim() || '';
+          
+          // Extract website/link
+          const linkElement = element.querySelector([
+            'a[href^="http"]',
+            'a[href*="www"]',
+            '.website',
+            '.link',
+            '[data-testid*="website"]'
+          ].join(', '));
+          
+          let website = linkElement?.getAttribute('href') || '';
+          if (!website && linkElement?.textContent?.includes('www')) {
+            website = linkElement.textContent.trim();
+          }
+          
+          // Extract description
+          const descElement = element.querySelector([
+            '.description',
+            '.summary',
+            '.bio',
+            'p',
+            '.content',
+            '[data-testid*="description"]'
+          ].join(', '));
+          
+          const description = descElement?.textContent?.trim() || '';
+          
+          // Extract employee count
+          const employeeElement = element.querySelector([
+            '[data-testid*="employee"]',
+            '.employees',
+            '.size',
+            '.headcount'
+          ].join(', '));
+          
+          const employees = employeeElement?.textContent?.trim() || '';
+          
+          // Extract logo
+          const logoElement = element.querySelector([
+            'img',
+            '.logo',
+            '[data-testid*="logo"]'
+          ].join(', '));
+          
+          const logo = logoElement?.getAttribute('src') || logoElement?.getAttribute('data-src') || '';
+          
+          // Extract industry/category
+          const industryElement = element.querySelector([
+            '.category',
+            '.industry',
+            '.sector',
+            '.tag',
+            '[data-testid*="category"]'
+          ].join(', '));
+          
+          const industry = industryElement?.textContent?.trim() || '';
+          
+          if (name && name.length > 2) {
+            extractedCompanies.push({
+              name,
+              website: website.startsWith('http') ? website : (website ? `https://${website}` : ''),
+              description: description.substring(0, 500),
+              logo: logo.startsWith('http') ? logo : (logo ? `${window.location.origin}${logo}` : ''),
+              employees,
+              industry,
+              location: '',
+              additionalData: {}
+            });
+          }
+        }
+        
+        return extractedCompanies;
+      });
+      
+      console.log(`[MCP] Extracted ${companies.length} companies from page`);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              url,
+              extractionMode,
+              totalFound: companies.length,
+              companies: companies.slice(0, Number(maxResults)),
+              method: 'MCP Puppeteer Extraction',
+              timestamp: new Date().toISOString()
+            }, null, 2)
+          }
+        ],
+        isError: false
+      };
+      
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+    }
+    
+  } catch (error) {
+    console.error('Company extraction error:', error);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: false,
+            error: 'Failed to extract company data',
+            message: error instanceof Error ? error.message : 'Unknown error',
+            url: args.url || 'Invalid URL',
+            extractionMode: args.extractionMode
+          }, null, 2)
+        }
+      ],
+      isError: true
+    };
+  }
+}
+
+// Smart navigation function for complex websites
+async function intelligentNavigation(args: Record<string, unknown>) {
+  try {
+    const { url, task = 'extract_companies', maxPages = 3, maxResults = 50 } = args;
+    
+    if (!url || typeof url !== 'string') {
+      throw new Error('URL is required and must be a string');
+    }
+    
+    console.log(`[MCP] Starting intelligent navigation for task: ${task}`);
+    console.log(`[MCP] Target URL: ${url}`);
+    
+    let browser;
+    try {
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-blink-features=AutomationControlled'
+        ]
+      });
+      
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      
+      // Navigate to initial page
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const allCompanies = [];
+      const visitedUrls = new Set();
+      
+      // Extract from current page
+      console.log(`[MCP] Extracting from main page...`);
+      const currentPageData = await extractCompaniesFromPage(page);
+      allCompanies.push(...currentPageData);
+      visitedUrls.add(url);
+      
+      // Look for pagination or "Load More" buttons
+      const navigationElements = await page.evaluate(() => {
+        const selectors = [
+          'button[aria-label*="next"]',
+          'button[aria-label*="more"]',
+          'a[aria-label*="next"]',
+          '.pagination a',
+          '.load-more',
+          '.show-more',
+          '[data-testid*="load"]',
+          '[data-testid*="next"]'
+        ];
+        
+        const elements: Array<{
+          selector: string;
+          text: string;
+          href: string | null;
+          onclick: string | null;
+          type: string;
+        }> = [];
+        selectors.forEach(selector => {
+          document.querySelectorAll(selector).forEach(el => {
+            if (el.textContent && !(el as HTMLButtonElement).disabled) {
+              elements.push({
+                selector,
+                text: el.textContent.trim(),
+                href: el.getAttribute('href'),
+                onclick: el.getAttribute('onclick'),
+                type: el.tagName.toLowerCase()
+              });
+            }
+          });
+        });
+        
+        return elements;
+      });
+      
+      console.log(`[MCP] Found ${navigationElements.length} navigation elements`);
+      
+      // Try to load more content
+      for (let i = 0; i < Math.min(Number(maxPages) - 1, navigationElements.length); i++) {
+        if (allCompanies.length >= Number(maxResults)) break;
+        
+        const navElement = navigationElements[i];
+        console.log(`[MCP] Trying navigation element: ${navElement.text}`);
+        
+        try {
+          if (navElement.type === 'button' || navElement.onclick) {
+            // Click button to load more
+            await page.click(navElement.selector);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            const newData = await extractCompaniesFromPage(page);
+            allCompanies.push(...newData);
+            
+          } else if (navElement.href && !visitedUrls.has(navElement.href)) {
+            // Navigate to new page
+            const fullUrl = navElement.href.startsWith('http') ? navElement.href : new URL(navElement.href, url).href;
+            await page.goto(fullUrl, { waitUntil: 'networkidle2' });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const newData = await extractCompaniesFromPage(page);
+            allCompanies.push(...newData);
+            visitedUrls.add(fullUrl);
+          }
+        } catch (navError) {
+          console.warn(`[MCP] Navigation failed for element ${i}:`, navError);
+        }
+      }
+      
+      // Remove duplicates
+      const uniqueCompanies = allCompanies.filter((company, index, self) => 
+        index === self.findIndex(c => c.name === company.name)
+      );
+      
+      console.log(`[MCP] Intelligent navigation completed. Found ${uniqueCompanies.length} unique companies`);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              task,
+              url,
+              totalFound: uniqueCompanies.length,
+              pagesVisited: visitedUrls.size,
+              companies: uniqueCompanies.slice(0, Number(maxResults)),
+              method: 'MCP Intelligent Navigation',
+              timestamp: new Date().toISOString()
+            }, null, 2)
+          }
+        ],
+        isError: false
+      };
+      
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+    }
+    
+  } catch (error) {
+    console.error('Intelligent navigation error:', error);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: false,
+            error: 'Intelligent navigation failed',
+            message: error instanceof Error ? error.message : 'Unknown error',
+            url: args.url,
+            task: args.task
+          }, null, 2)
+        }
+      ],
+      isError: true
+    };
+  }
+}
+
+// Helper function to extract companies from current page
+async function extractCompaniesFromPage(page: import('puppeteer').Page) {
+  return await page.evaluate(() => {
+    const companySelectors = [
+      '.partner-card',
+      '.company-card', 
+      '.exhibitor-card',
+      '[data-testid*="partner"]',
+      '[data-testid*="company"]',
+      '.partner-item',
+      '.grid-item',
+      '.card',
+      '.partner',
+      '.startup-card',
+      '.vendor-card'
+    ];
+      const companies: Array<{
+      name: string;
+      website?: string;
+      description?: string;
+      logo?: string;
+      industry?: string;
+      location?: string;
+      employees?: string;
+      additionalData?: Record<string, unknown>;
+    }> = [];
+    
+    companySelectors.forEach(selector => {
+      document.querySelectorAll(selector).forEach(element => {
+        const nameEl = element.querySelector('h1, h2, h3, h4, h5, h6, .name, .title, .company-name, [data-testid*="name"]');
+        const name = nameEl?.textContent?.trim();
+        
+        if (name && name.length > 2) {
+          const linkEl = element.querySelector('a[href^="http"], a[href*="www"], .website, .link');
+          const descEl = element.querySelector('.description, .summary, .bio, p, .content');
+          const logoEl = element.querySelector('img, .logo');
+          const industryEl = element.querySelector('.category, .industry, .sector, .tag');
+          const employeeEl = element.querySelector('[data-testid*="employee"], .employees, .size');
+          
+          companies.push({
+            name,
+            website: linkEl?.getAttribute('href') || linkEl?.textContent || '',
+            description: descEl?.textContent?.trim()?.substring(0, 300) || '',
+            logo: logoEl?.getAttribute('src') || logoEl?.getAttribute('data-src') || '',
+            industry: industryEl?.textContent?.trim() || '',
+            employees: employeeEl?.textContent?.trim() || '',
+            location: '',
+            additionalData: {}
+          });
+        }
+      });
+    });
+    
+    return companies;
+  });
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse<MCPResponse>> {
   try {
     const { tool, args }: MCPRequest = await request.json();
@@ -896,10 +1307,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<MCPRespon
 
       case 'get_tetika_status':
         result = await getTetikaStatus(args);
+        break;      case 'fetch_web_content':
+        result = await fetchWebContent(args);
         break;
 
-      case 'fetch_web_content':
-        result = await fetchWebContent(args);
+      case 'extract_company_data':
+        result = await extractCompanyData(args);
+        break;
+
+      case 'intelligent_navigation':
+        result = await intelligentNavigation(args);
         break;
 
       default:

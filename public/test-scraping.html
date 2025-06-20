@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Scraping - Tetika</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        button[type="button"] {
+            background-color: #6c757d;
+            padding: 6px 12px;
+            font-size: 12px;
+            margin: 2px;
+        }
+        button[type="button"]:hover {
+            background-color: #545b62;
+        }
+        .results {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .steps {
+            margin: 20px 0;
+        }
+        .step {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+        }
+        .step.in-progress {
+            border-left-color: #ffc107;
+        }
+        .step.error {
+            border-left-color: #dc3545;
+        }
+        .company-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .company-table th,
+        .company-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        .company-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .company-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Test API Scraping - Tetika</h1>
+          <form id="scrapingForm">
+            <div class="input-group">
+                <label for="query">Query ou URL à scrapper :</label>
+                <textarea id="query" rows="3" placeholder="Exemple: https://vivatechnology.com/partners?hashtags=healthcare%2520%2526%2520wellness ou 'healthcare companies France'"></textarea>
+                <small>
+                    URLs de test : 
+                    <button type="button" onclick="setTestUrl('vivatech')">Vivatech Healthcare</button>
+                    <button type="button" onclick="setTestUrl('simple')">Test Simple</button>
+                </small>
+            </div>
+            
+            <div class="input-group">
+                <label for="mode">Mode de scraping :</label>
+                <select id="mode">
+                    <option value="quick-scraping">Quick Scraping</option>
+                    <option value="deep-scraping">Deep Scraping</option>
+                </select>
+            </div>
+            
+            <div class="input-group">
+                <label for="maxSources">Nombre maximum de sources :</label>
+                <input type="number" id="maxSources" value="10" min="1" max="50">
+            </div>
+            
+            <button type="submit">🚀 Lancer le Scraping</button>
+            <button type="button" onclick="clearResults()">🗑️ Effacer</button>
+        </form>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('scrapingForm');
+        const resultsDiv = document.getElementById('results');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const query = document.getElementById('query').value.trim();
+            const mode = document.getElementById('mode').value;
+            const maxSources = parseInt(document.getElementById('maxSources').value);
+            
+            if (!query) {
+                alert('Veuillez entrer une query ou URL');
+                return;
+            }
+              // Show loading
+            resultsDiv.innerHTML = `
+                <div class="results loading">
+                    <div class="spinner"></div>
+                    <p>Scraping en cours... Cela peut prendre jusqu'à 90 secondes.</p>
+                    <p><small>Si le site ne répond pas, l'API essaiera automatiquement une méthode de scraping alternative.</small></p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch('/api/scraping', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query,
+                        mode,
+                        maxSources,
+                        includeAnalysis: true
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                displayResults(result);
+                
+            } catch (error) {
+                displayError(error);
+            }
+        });
+        
+        function displayResults(result) {
+            let html = '';
+            
+            if (result.success) {
+                html += `<div class="results">`;
+                html += `<h2>✅ Scraping réussi!</h2>`;
+                
+                // Steps
+                if (result.steps && result.steps.length > 0) {
+                    html += `<div class="steps">`;
+                    html += `<h3>📋 Étapes du processus :</h3>`;
+                    result.steps.forEach(step => {
+                        html += `<div class="step ${step.status}">`;
+                        html += `<strong>${step.title}</strong><br>`;
+                        html += `${step.description}<br>`;
+                        html += `<small>Status: ${step.status} | Sources: ${step.sources.length}</small>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                // Summary
+                if (result.reportData && result.reportData.summary) {
+                    const summary = result.reportData.summary;
+                    html += `<h3>📊 Résumé :</h3>`;
+                    html += `<ul>`;
+                    html += `<li><strong>Type:</strong> ${result.reportData.scrapingType}</li>`;
+                    html += `<li><strong>Sources totales:</strong> ${summary.totalSources}</li>`;
+                    html += `<li><strong>Extractions réussies:</strong> ${summary.successfulExtractions}</li>`;
+                    html += `<li><strong>Mots totaux:</strong> ${summary.totalWords}</li>`;
+                    html += `<li><strong>Type de données:</strong> ${summary.dataType}</li>`;
+                    html += `</ul>`;
+                }
+                
+                // Company Data Table
+                if (result.reportData && result.reportData.companyData && result.reportData.companyData.length > 0) {
+                    html += `<h3>🏢 Données des entreprises (${result.reportData.companyData.length} trouvées) :</h3>`;
+                    html += `<table class="company-table">`;
+                    html += `<thead><tr>`;
+                    html += `<th>Nom de l'entreprise</th>`;
+                    html += `<th>Site web</th>`;
+                    html += `<th>Employés</th>`;
+                    html += `<th>Industrie</th>`;
+                    html += `<th>Localisation</th>`;
+                    html += `</tr></thead><tbody>`;
+                    
+                    result.reportData.companyData.forEach(company => {
+                        html += `<tr>`;
+                        html += `<td>${company['Company Name'] || 'N/A'}</td>`;
+                        html += `<td><a href="${company.Website}" target="_blank">${company.Website || 'N/A'}</a></td>`;
+                        html += `<td>${company.Employees || 'N/A'}</td>`;
+                        html += `<td>${company.Industry || 'N/A'}</td>`;
+                        html += `<td>${company.Location || 'N/A'}</td>`;
+                        html += `</tr>`;
+                    });
+                    
+                    html += `</tbody></table>`;
+                }
+                
+                // Analysis
+                if (result.reportData && result.reportData.analysis) {
+                    html += `<h3>📈 Analyse :</h3>`;
+                    html += `<pre>${JSON.stringify(result.reportData.analysis, null, 2)}</pre>`;
+                }
+                
+                html += `</div>`;
+            } else {
+                html += `<div class="results error">`;
+                html += `<h2>❌ Erreur de scraping</h2>`;
+                html += `<p>${result.error || 'Erreur inconnue'}</p>`;
+                
+                if (result.steps && result.steps.length > 0) {
+                    html += `<h3>📋 Étapes effectuées :</h3>`;
+                    result.steps.forEach(step => {
+                        html += `<div class="step ${step.status}">`;
+                        html += `<strong>${step.title}</strong><br>`;
+                        html += `${step.description}<br>`;
+                        html += `<small>Status: ${step.status}</small>`;
+                        html += `</div>`;
+                    });
+                }
+                
+                html += `</div>`;
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        function displayError(error) {
+            resultsDiv.innerHTML = `
+                <div class="results error">
+                    <h2>❌ Erreur</h2>
+                    <p>Une erreur s'est produite lors du scraping :</p>
+                    <pre>${error.message}</pre>
+                </div>
+            `;
+        }
+          function clearResults() {
+            resultsDiv.innerHTML = '';
+        }
+        
+        function setTestUrl(type) {
+            const queryField = document.getElementById('query');
+            if (type === 'vivatech') {
+                queryField.value = 'https://vivatechnology.com/partners?hashtags=healthcare%2520%2526%2520wellness';
+            } else if (type === 'simple') {
+                queryField.value = 'healthcare companies in France';
+            }
+        }
+        
+        // Pre-fill with the example URL
+        document.getElementById('query').value = 'https://vivatechnology.com/partners?hashtags=healthcare%2520%2526%2520wellness';
+    </script>
+</body>
+</html>
