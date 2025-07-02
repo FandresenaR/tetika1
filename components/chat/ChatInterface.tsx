@@ -489,9 +489,127 @@ The complete extraction process and raw data are available in the **MCP Process*
             };
             
             setMessages(prev => [...prev, assistantMessage]);
+              } else {
+            // Instead of throwing an error, try fallback scraping
+            console.log('MCP navigation found no companies, trying fallback methods...');
             
-          } else {
-            throw new Error('No companies found via MCP navigation. The site might have different structure or additional protections.');
+            // Update thinking steps to show fallback attempt
+            setThinkingSteps(prev => prev.map(step => 
+              step.id === 'mcp-navigation' 
+                ? { ...step, status: 'completed', data: { 
+                    companiesFound: 0, 
+                    message: 'No companies found via MCP, trying fallback methods...' 
+                  }}
+                : step
+            ));
+            
+            // Add fallback step
+            setThinkingSteps(prev => [...prev, {
+              id: 'fallback-scraping',
+              title: '🔄 Fallback Scraping',
+              description: 'Trying traditional scraping methods...',
+              sources: [url],
+              timestamp: Date.now(),
+              status: 'in-progress'
+            }]);
+            
+            // Try regular scraping API as fallback
+            try {
+              const fallbackResponse = await fetch('/api/scraping', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  query: url,
+                  mode: 'quick-scraping',
+                  maxSources: 5,
+                  includeAnalysis: true
+                })
+              });
+              
+              if (fallbackResponse.ok) {
+                const fallbackResult = await fallbackResponse.json();
+                
+                if (fallbackResult.success && fallbackResult.companies && fallbackResult.companies.length > 0) {
+                  // Update thinking steps
+                  setThinkingSteps(prev => prev.map(step => 
+                    step.id === 'fallback-scraping' 
+                      ? { ...step, status: 'completed', data: { 
+                          companiesFound: fallbackResult.companies.length,
+                          method: 'Fallback Scraping'
+                        }}
+                      : step
+                  ));
+                  
+                  // Create success message with fallback data
+                  const companyList = fallbackResult.companies.map((company: {
+                    name: string;
+                    website: string;
+                    description: string;
+                    employees?: string;
+                    industry?: string;
+                  }, index: number) => {
+                    return `${index + 1}. **${company.name}**
+   - Website: ${company.website || 'Not specified'}
+   - Description: ${company.description?.substring(0, 200) || 'No description available'}${company.description && company.description.length > 200 ? '...' : ''}
+   - Employees: ${company.employees || 'Not specified'}
+   - Industry: ${company.industry || 'Not specified'}`;
+                  }).join('\n\n');
+                  
+                  const assistantMessage: Message = {
+                    id: generateId(),
+                    role: 'assistant',
+                    content: `## 🔄 Fallback Scraping Success
+
+While the advanced MCP navigation didn't find structured company data, I successfully extracted information using traditional scraping methods.
+
+### 📊 Extraction Results
+- **Total Companies Found**: ${fallbackResult.companies.length}
+- **Extraction Method**: Fallback Scraping (Puppeteer + Cheerio)
+- **Target URL**: ${url}
+
+### 🏢 Company Directory
+
+${companyList}
+
+### 📈 Data Quality Metrics
+- **Website Availability**: ${fallbackResult.companies.filter((c: { website: string }) => c.website && c.website.length > 0).length}/${fallbackResult.companies.length} companies have websites
+- **Detailed Descriptions**: ${fallbackResult.companies.filter((c: { description: string }) => c.description && c.description.length > 50).length}/${fallbackResult.companies.length} companies have detailed descriptions
+
+*Note: MCP navigation didn't detect the expected structure, but traditional scraping methods were successful. This suggests the site may use non-standard layouts or have additional protections.*`,
+                    timestamp: Date.now(),
+                    sources: [{
+                      title: `Fallback Scraping - ${fallbackResult.companies.length} Companies`,
+                      url: url,
+                      snippet: `Successfully extracted ${fallbackResult.companies.length} companies using fallback methods`
+                    }]
+                  };
+                  
+                  setMessages(prev => [...prev, assistantMessage]);
+                  return; // Exit successfully
+                }
+              }
+              
+              // If fallback also fails, show final error
+              setThinkingSteps(prev => prev.map(step => 
+                step.id === 'fallback-scraping' 
+                  ? { ...step, status: 'error', data: { error: 'Fallback scraping also failed' }}
+                  : step
+              ));
+              
+              throw new Error('Both MCP navigation and fallback scraping failed to find companies. The site might have strong anti-scraping protections or an unusual structure.');
+              
+            } catch (fallbackError) {
+              console.error('Fallback scraping failed:', fallbackError);
+              setThinkingSteps(prev => prev.map(step => 
+                step.id === 'fallback-scraping' 
+                  ? { ...step, status: 'error', data: { error: fallbackError instanceof Error ? fallbackError.message : 'Unknown error' }}
+                  : step
+              ));
+              
+              throw new Error('All scraping methods failed. The site might have strong anti-scraping protections.');
+            }
           }
         } else {
           throw new Error('MCP navigation failed. Falling back to standard scraping...');

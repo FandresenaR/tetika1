@@ -627,6 +627,8 @@ async function chatWithAI(args: Record<string, unknown>) {  try {
   }
 }
 
+// Unused function - kept for potential future use
+/*
 async function getTetikaStatus(args: Record<string, unknown>) {
   const { include_models = true, include_settings = true } = args;
 
@@ -684,6 +686,7 @@ async function getTetikaStatus(args: Record<string, unknown>) {
     ],
   };
 }
+*/
 
 async function manageConversation(args: Record<string, unknown>) {
   const { action, session_id, title, limit = 10 } = args;
@@ -859,170 +862,230 @@ async function fetchWebContent(args: Record<string, unknown>) {
   }
 }
 
-// Enhanced company data extraction for VivaTech partners
+// Enhanced company data extraction function
 async function extractCompanyData(args: Record<string, unknown>) {
   try {
-    const { url, extractionMode = 'company_directory', maxResults = 50 } = args;
+    const { url, extractionMode = 'companies', maxResults = 50, instructions } = args;
     
     if (!url || typeof url !== 'string') {
       throw new Error('URL is required and must be a string');
     }
     
-    console.log(`[MCP] Extracting company data from: ${url}`);
-    console.log(`[MCP] Extraction mode: ${extractionMode}, Max results: ${maxResults}`);
+    console.log(`[MCP] Starting enhanced extraction for: ${url}`);
+    console.log(`[MCP] Instructions: ${instructions || 'Default company extraction'}`);
     
-    // Use Puppeteer for dynamic content loading
     let browser;
+    
     try {
+      // Enhanced browser configuration for anti-bot protection
       browser = await puppeteer.launch({
         headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--window-size=1920,1080',
           '--disable-blink-features=AutomationControlled',
-          '--disable-features=VizDisplayCompositor'
-        ]
+          '--disable-features=VizDisplayCompositor',
+          '--disable-web-security',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-background-media-suspend',
+          '--disable-hang-monitor',
+          '--disable-client-side-phishing-detection',
+          '--disable-default-apps',
+          '--disable-extensions',
+          '--disable-sync',
+          '--disable-translate',
+          '--metrics-recording-only',
+          '--no-first-run',
+          '--safebrowsing-disable-auto-update',
+          '--enable-automation',
+          '--password-store=basic',
+          '--use-mock-keychain'
+        ],
+        defaultViewport: null,
+        ignoreDefaultArgs: ['--enable-automation']
       });
       
       const page = await browser.newPage();
       
-      // Set realistic headers
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
-      await page.setViewport({ width: 1366, height: 768 });
+      // Enhanced page configuration
+      await page.setViewport({ width: 1920, height: 1080 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
-      // Navigate to the page
-      console.log(`[MCP] Navigating to ${url}...`);
-      await page.goto(url, { 
-        waitUntil: 'networkidle2',
-        timeout: 60000 
+      // Set additional headers
+      await page.setExtraHTTPHeaders({
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0'
       });
       
-      // Wait for potential dynamic content
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Handle potential dialog boxes
+      page.on('dialog', async dialog => {
+        console.log(`[MCP] Dialog appeared: ${dialog.message()}`);
+        await dialog.accept();
+      });
       
-      // Extract company data based on VivaTech structure
-      const companies = await page.evaluate(() => {
-        const companyElements = document.querySelectorAll([
-          '.partner-card',
-          '.company-card', 
-          '.exhibitor-card',
-          '[data-testid*="partner"]',
-          '[data-testid*="company"]',
-          '.partner-item',
-          '.grid-item',
-          '.card',
-          '.partner'
-        ].join(', '));
-        
-        console.log(`Found ${companyElements.length} potential company elements`);
-        
-        const extractedCompanies = [];
-        
-        for (let i = 0; i < Math.min(companyElements.length, 50); i++) {
-          const element = companyElements[i];
+      // Multiple navigation attempts for resilience
+      let navigationSuccess = false;
+      const maxRetries = 3;
+      
+      for (let attempt = 1; attempt <= maxRetries && !navigationSuccess; attempt++) {
+        try {
+          console.log(`[MCP] Navigation attempt ${attempt}/${maxRetries}`);
           
-          // Extract company name
-          const nameElement = element.querySelector([
-            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-            '.name', '.title', '.company-name',
-            '[data-testid*="name"]',
-            'a[href*="company"]',
-            '.partner-name'
-          ].join(', '));
-          
-          const name = nameElement?.textContent?.trim() || '';
-          
-          // Extract website/link
-          const linkElement = element.querySelector([
-            'a[href^="http"]',
-            'a[href*="www"]',
-            '.website',
-            '.link',
-            '[data-testid*="website"]'
-          ].join(', '));
-          
-          let website = linkElement?.getAttribute('href') || '';
-          if (!website && linkElement?.textContent?.includes('www')) {
-            website = linkElement.textContent.trim();
-          }
-          
-          // Extract description
-          const descElement = element.querySelector([
-            '.description',
-            '.summary',
-            '.bio',
-            'p',
-            '.content',
-            '[data-testid*="description"]'
-          ].join(', '));
-          
-          const description = descElement?.textContent?.trim() || '';
-          
-          // Extract employee count
-          const employeeElement = element.querySelector([
-            '[data-testid*="employee"]',
-            '.employees',
-            '.size',
-            '.headcount'
-          ].join(', '));
-          
-          const employees = employeeElement?.textContent?.trim() || '';
-          
-          // Extract logo
-          const logoElement = element.querySelector([
-            'img',
-            '.logo',
-            '[data-testid*="logo"]'
-          ].join(', '));
-          
-          const logo = logoElement?.getAttribute('src') || logoElement?.getAttribute('data-src') || '';
-          
-          // Extract industry/category
-          const industryElement = element.querySelector([
-            '.category',
-            '.industry',
-            '.sector',
-            '.tag',
-            '[data-testid*="category"]'
-          ].join(', '));
-          
-          const industry = industryElement?.textContent?.trim() || '';
-          
-          if (name && name.length > 2) {
-            extractedCompanies.push({
-              name,
-              website: website.startsWith('http') ? website : (website ? `https://${website}` : ''),
-              description: description.substring(0, 500),
-              logo: logo.startsWith('http') ? logo : (logo ? `${window.location.origin}${logo}` : ''),
-              employees,
-              industry,
-              location: '',
-              additionalData: {}
+          // Try different navigation strategies
+          if (attempt === 1) {
+            // Standard navigation
+            await page.goto(url, { 
+              waitUntil: 'networkidle2', 
+              timeout: 30000 
+            });
+          } else if (attempt === 2) {
+            // Fallback to domcontentloaded
+            await page.goto(url, { 
+              waitUntil: 'domcontentloaded', 
+              timeout: 20000 
+            });
+          } else {
+            // Final attempt with load event only
+            await page.goto(url, { 
+              waitUntil: 'load', 
+              timeout: 15000 
             });
           }
+          
+          navigationSuccess = true;
+          console.log(`[MCP] Navigation successful on attempt ${attempt}`);
+          
+        } catch (navError) {
+          console.warn(`[MCP] Navigation attempt ${attempt} failed:`, navError instanceof Error ? navError.message : String(navError));
+          
+          if (attempt < maxRetries) {
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+      
+      if (!navigationSuccess) {
+        throw new Error('Failed to navigate to the target URL after multiple attempts');
+      }
+      
+      // Enhanced waiting strategy
+      console.log('[MCP] Waiting for page to stabilize...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Try to wait for common loading indicators to disappear
+      try {
+        await page.waitForFunction(() => {
+          const loadingIndicators = document.querySelectorAll(
+            '.loading, .spinner, .loader, [class*="loading"], [class*="spinner"]'
+          );
+          return loadingIndicators.length === 0;
+        }, { timeout: 5000 });      } catch {
+        console.log('[MCP] Loading indicators check timed out, proceeding...');
+      }
+      
+      // Intelligent scrolling for dynamic content
+      console.log('[MCP] Performing intelligent scrolling...');
+      await page.evaluate(async () => {
+        const scrollDelay = 1000;
+        const maxScrolls = 5;
+        let lastHeight = document.body.scrollHeight;
+        
+        for (let i = 0; i < maxScrolls; i++) {
+          window.scrollTo(0, document.body.scrollHeight);
+          await new Promise(resolve => setTimeout(resolve, scrollDelay));
+          
+          const newHeight = document.body.scrollHeight;
+          if (newHeight === lastHeight) {
+            break; // No new content loaded
+          }
+          lastHeight = newHeight;
         }
         
-        return extractedCompanies;
+        // Scroll back to top
+        window.scrollTo(0, 0);
+        await new Promise(resolve => setTimeout(resolve, 500));
       });
       
+      // Additional wait for lazy-loaded content
+      await new Promise(resolve => setTimeout(resolve, 2000));
+        // Extract company data using the current page URL for detection
+      const currentUrl = page.url();
+      let companies = [];
+      let extractionMethod = 'Unknown';
+      let debugInfo = {};
+      
+      if (currentUrl.includes('vivatechnology.com')) {
+        console.log('[MCP] Using VivaTechnology-specific extraction');
+        extractionMethod = 'VivaTechnology Specialized';
+        companies = await extractVivaTechCompanies(page);
+          // Debug info for VivaTech
+        debugInfo = await page.evaluate(() => {
+          const selectors = [
+            '[data-testid*="partner"]',
+            '.partner-card',
+            '.company-card',
+            '.card',
+            'a[href*="/partner"]'
+          ];
+          
+          const selectorResults: Record<string, number> = {};
+          selectors.forEach(sel => {
+            selectorResults[sel] = document.querySelectorAll(sel).length;
+          });
+          
+          return {
+            title: document.title,
+            bodyLength: document.body.textContent?.length || 0,
+            selectorResults,
+            hasPartnerText: (document.body.textContent || '').toLowerCase().includes('partner'),
+            hasCompanyText: (document.body.textContent || '').toLowerCase().includes('company'),
+            totalElements: document.querySelectorAll('*').length
+          };
+        });
+        
+        console.log('[MCP] VivaTech debug info:', debugInfo);
+      } else {
+        console.log('[MCP] Using generic company extraction');
+        extractionMethod = 'Generic';
+        companies = await extractGenericCompanies(page);
+      }
+      
       console.log(`[MCP] Extracted ${companies.length} companies from page`);
+      
+      // Determine if extraction was successful
+      const extractionSuccess = companies.length > 0 || !currentUrl.includes('vivatechnology.com');
       
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify({
-              success: true,
-              url,
+              success: extractionSuccess,
+              url: currentUrl,
               extractionMode,
               totalFound: companies.length,
               companies: companies.slice(0, Number(maxResults)),
-              method: 'MCP Puppeteer Extraction',
-              timestamp: new Date().toISOString()
+              method: `MCP Enhanced Puppeteer Extraction (${extractionMethod})`,
+              timestamp: new Date().toISOString(),
+              instructions: instructions || 'Default extraction',
+              debugInfo: currentUrl.includes('vivatechnology.com') ? debugInfo : undefined,
+              warning: companies.length === 0 && currentUrl.includes('vivatechnology.com') ? 
+                'No companies extracted from VivaTech - likely due to anti-bot protection or page structure changes' : undefined
             }, null, 2)
           }
         ],
-        isError: false
+        isError: !extractionSuccess
       };
       
     } finally {
@@ -1032,7 +1095,7 @@ async function extractCompanyData(args: Record<string, unknown>) {
     }
     
   } catch (error) {
-    console.error('Company extraction error:', error);
+    console.error('Enhanced company extraction error:', error);
     return {
       content: [
         {
@@ -1042,7 +1105,8 @@ async function extractCompanyData(args: Record<string, unknown>) {
             error: 'Failed to extract company data',
             message: error instanceof Error ? error.message : 'Unknown error',
             url: args.url || 'Invalid URL',
-            extractionMode: args.extractionMode
+            extractionMode: args.extractionMode,
+            timestamp: new Date().toISOString()
           }, null, 2)
         }
       ],
@@ -1051,184 +1115,65 @@ async function extractCompanyData(args: Record<string, unknown>) {
   }
 }
 
-// Smart navigation function for complex websites
-async function intelligentNavigation(args: Record<string, unknown>) {
-  try {
-    const { url, task = 'extract_companies', maxPages = 3, maxResults = 50 } = args;
+// Specialized extraction for VivaTechnology
+async function extractVivaTechCompanies(page: import('puppeteer').Page) {
+  console.log('[MCP] Starting VivaTech-specific company extraction...');
+  
+  return await page.evaluate(async () => {
+    console.log('[VivaTech] Starting evaluation inside browser context...');
     
-    if (!url || typeof url !== 'string') {
-      throw new Error('URL is required and must be a string');
-    }
-    
-    console.log(`[MCP] Starting intelligent navigation for task: ${task}`);
-    console.log(`[MCP] Target URL: ${url}`);
-    
-    let browser;
-    try {
-      browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-blink-features=AutomationControlled'
-        ]
-      });
-      
-      const page = await browser.newPage();
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-      
-      // Navigate to initial page
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const allCompanies = [];
-      const visitedUrls = new Set();
-      
-      // Extract from current page
-      console.log(`[MCP] Extracting from main page...`);
-      const currentPageData = await extractCompaniesFromPage(page);
-      allCompanies.push(...currentPageData);
-      visitedUrls.add(url);
-      
-      // Look for pagination or "Load More" buttons
-      const navigationElements = await page.evaluate(() => {
-        const selectors = [
-          'button[aria-label*="next"]',
-          'button[aria-label*="more"]',
-          'a[aria-label*="next"]',
-          '.pagination a',
-          '.load-more',
-          '.show-more',
-          '[data-testid*="load"]',
-          '[data-testid*="next"]'
-        ];
-        
-        const elements: Array<{
-          selector: string;
-          text: string;
-          href: string | null;
-          onclick: string | null;
-          type: string;
-        }> = [];
-        selectors.forEach(selector => {
-          document.querySelectorAll(selector).forEach(el => {
-            if (el.textContent && !(el as HTMLButtonElement).disabled) {
-              elements.push({
-                selector,
-                text: el.textContent.trim(),
-                href: el.getAttribute('href'),
-                onclick: el.getAttribute('onclick'),
-                type: el.tagName.toLowerCase()
-              });
-            }
-          });
-        });
-        
-        return elements;
-      });
-      
-      console.log(`[MCP] Found ${navigationElements.length} navigation elements`);
-      
-      // Try to load more content
-      for (let i = 0; i < Math.min(Number(maxPages) - 1, navigationElements.length); i++) {
-        if (allCompanies.length >= Number(maxResults)) break;
-        
-        const navElement = navigationElements[i];
-        console.log(`[MCP] Trying navigation element: ${navElement.text}`);
-        
-        try {
-          if (navElement.type === 'button' || navElement.onclick) {
-            // Click button to load more
-            await page.click(navElement.selector);
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            const newData = await extractCompaniesFromPage(page);
-            allCompanies.push(...newData);
-            
-          } else if (navElement.href && !visitedUrls.has(navElement.href)) {
-            // Navigate to new page
-            const fullUrl = navElement.href.startsWith('http') ? navElement.href : new URL(navElement.href, url).href;
-            await page.goto(fullUrl, { waitUntil: 'networkidle2' });
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            const newData = await extractCompaniesFromPage(page);
-            allCompanies.push(...newData);
-            visitedUrls.add(fullUrl);
-          }
-        } catch (navError) {
-          console.warn(`[MCP] Navigation failed for element ${i}:`, navError);
-        }
-      }
-      
-      // Remove duplicates
-      const uniqueCompanies = allCompanies.filter((company, index, self) => 
-        index === self.findIndex(c => c.name === company.name)
-      );
-      
-      console.log(`[MCP] Intelligent navigation completed. Found ${uniqueCompanies.length} unique companies`);
-      
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              success: true,
-              task,
-              url,
-              totalFound: uniqueCompanies.length,
-              pagesVisited: visitedUrls.size,
-              companies: uniqueCompanies.slice(0, Number(maxResults)),
-              method: 'MCP Intelligent Navigation',
-              timestamp: new Date().toISOString()
-            }, null, 2)
-          }
-        ],
-        isError: false
-      };
-      
-    } finally {
-      if (browser) {
-        await browser.close();
-      }
-    }
-    
-  } catch (error) {
-    console.error('Intelligent navigation error:', error);
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            success: false,
-            error: 'Intelligent navigation failed',
-            message: error instanceof Error ? error.message : 'Unknown error',
-            url: args.url,
-            task: args.task
-          }, null, 2)
-        }
-      ],
-      isError: true
+    // First, let's analyze what we have on the page
+    const pageAnalysis = {
+      title: document.title,
+      url: window.location.href,
+      bodyText: document.body.textContent?.substring(0, 500) || '',
+      totalElements: document.querySelectorAll('*').length,
+      totalLinks: document.querySelectorAll('a').length,
+      hasHealthcare: (document.body.textContent || '').toLowerCase().includes('healthcare'),
+      hasPartners: (document.body.textContent || '').toLowerCase().includes('partner'),
+      hasWellness: (document.body.textContent || '').toLowerCase().includes('wellness')
     };
-  }
-}
-
-// Helper function to extract companies from current page
-async function extractCompaniesFromPage(page: import('puppeteer').Page) {
-  return await page.evaluate(() => {
+    
+    console.log('[VivaTech] Page analysis:', pageAnalysis);
+    
+    // VivaTech-specific selectors (more comprehensive)
     const companySelectors = [
-      '.partner-card',
-      '.company-card', 
-      '.exhibitor-card',
+      // Data attributes (most specific)
       '[data-testid*="partner"]',
+      '[data-testid*="exhibitor"]',
+      '[data-testid*="startup"]',
       '[data-testid*="company"]',
-      '.partner-item',
-      '.grid-item',
-      '.card',
-      '.partner',
-      '.startup-card',
-      '.vendor-card'
+      '[data-component*="partner"]',
+      '[data-component*="company"]',
+      
+      // Common class patterns for VivaTech
+      '.partner-card', '.exhibitor-card', '.startup-card', '.company-card',
+      '.sponsor-card', '.member-card', '.participant-card',
+      
+      // Generic card patterns
+      '.card', '.item', '.listing', '.entry', '.tile',
+      
+      // Class name contains
+      '[class*="card"]', '[class*="item"]', '[class*="partner"]',
+      '[class*="exhibitor"]', '[class*="startup"]', '[class*="company"]',
+      '[class*="sponsor"]', '[class*="member"]',
+      
+      // Link-based extraction for VivaTech
+      'a[href*="/partner"]', 'a[href*="/exhibitor"]', 'a[href*="/startup"]',
+      'a[href*="/company"]', 'a[href*="/sponsor"]',
+      
+      // Grid and list patterns
+      '.grid > div', '.list > div', '.directory > div',
+      '.partners > div', '.exhibitors > div', '.companies > div',
+      
+      // Article and section patterns
+      'article', 'section[class*="partner"]', 'section[class*="company"]',
+      
+      // Fallback patterns
+      'div[onclick]', '[role="button"]', '.clickable'
     ];
-      const companies: Array<{
+
+    const companies: Array<{
       name: string;
       website?: string;
       description?: string;
@@ -1238,33 +1183,395 @@ async function extractCompaniesFromPage(page: import('puppeteer').Page) {
       employees?: string;
       additionalData?: Record<string, unknown>;
     }> = [];
+
+    console.log('[VivaTech] Searching for company elements with', companySelectors.length, 'selectors...');
     
-    companySelectors.forEach(selector => {
-      document.querySelectorAll(selector).forEach(element => {
-        const nameEl = element.querySelector('h1, h2, h3, h4, h5, h6, .name, .title, .company-name, [data-testid*="name"]');
-        const name = nameEl?.textContent?.trim();
+    // Track what we find
+    const selectorStats: Record<string, number> = {};
+    
+    // Try each selector progressively
+    for (let selectorIndex = 0; selectorIndex < companySelectors.length; selectorIndex++) {
+      const selector = companySelectors[selectorIndex];
+      const elements = document.querySelectorAll(selector);
+      selectorStats[selector] = elements.length;
+      
+      console.log(`[VivaTech] Selector "${selector}": found ${elements.length} elements`);
+      
+      if (elements.length > 0) {
+        let extractedCount = 0;
         
-        if (name && name.length > 2) {
-          const linkEl = element.querySelector('a[href^="http"], a[href*="www"], .website, .link');
-          const descEl = element.querySelector('.description, .summary, .bio, p, .content');
-          const logoEl = element.querySelector('img, .logo');
-          const industryEl = element.querySelector('.category, .industry, .sector, .tag');
-          const employeeEl = element.querySelector('[data-testid*="employee"], .employees, .size');
+        for (let elementIndex = 0; elementIndex < Math.min(elements.length, 100); elementIndex++) {
+          if (extractedCount >= 50) break; // Limit to avoid timeout
           
-          companies.push({
-            name,
-            website: linkEl?.getAttribute('href') || linkEl?.textContent || '',
-            description: descEl?.textContent?.trim()?.substring(0, 300) || '',
-            logo: logoEl?.getAttribute('src') || logoEl?.getAttribute('data-src') || '',
-            industry: industryEl?.textContent?.trim() || '',
-            employees: employeeEl?.textContent?.trim() || '',
-            location: '',
-            additionalData: {}
-          });
+          const element = elements[elementIndex];
+          
+          try {
+            // Enhanced name extraction for VivaTech
+            let name = '';
+            
+            // Strategy 1: Look for headings and titles
+            const nameSelectors = [
+              'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              '[data-testid*="name"]', '[data-testid*="title"]',
+              '.name', '.title', '.company-name', '.partner-name',
+              '.exhibitor-name', '.startup-name', '.sponsor-name',
+              '.heading', '.label', '.brand-name', '.organization'
+            ];
+            
+            for (const nameSelector of nameSelectors) {
+              const nameEl = element.querySelector(nameSelector);
+              if (nameEl?.textContent?.trim() && nameEl.textContent.trim().length > 2) {
+                name = nameEl.textContent.trim();
+                break;
+              }
+            }
+            
+            // Strategy 2: Check attributes
+            if (!name) {
+              name = element.getAttribute('aria-label') || 
+                     element.getAttribute('title') || 
+                     element.getAttribute('data-name') ||
+                     element.getAttribute('alt') || '';
+            }
+            
+            // Strategy 3: Look for clickable elements with meaningful text
+            if (!name) {
+              const clickableEl = element.querySelector('a, button, [role="button"], [tabindex]');
+              if (clickableEl?.textContent?.trim()) {
+                const text = clickableEl.textContent.trim();
+                // Filter out generic text
+                const genericTerms = ['learn more', 'read more', 'view', 'see', 'click', 'here', 'link', 'button', 'more info', 'details'];
+                const isGeneric = genericTerms.some(term => text.toLowerCase().includes(term));
+                
+                if (!isGeneric && text.length > 2 && text.length < 100) {
+                  name = text;
+                }
+              }
+            }
+            
+            // Strategy 4: Element's own text content (first meaningful line)
+            if (!name) {
+              const elementText = element.textContent?.trim();
+              if (elementText && elementText.length > 2) {
+                const lines = elementText.split('\n').map(line => line.trim()).filter(line => line.length > 2);
+                for (const line of lines) {
+                  if (line.length > 2 && line.length < 150) {
+                    // Skip lines that look like descriptions or generic text
+                    const skipPatterns = ['click to', 'learn more', 'read more', 'view all', 'see more', 'discover', 'explore'];
+                    const shouldSkip = skipPatterns.some(pattern => line.toLowerCase().includes(pattern));
+                    
+                    if (!shouldSkip) {
+                      name = line;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (name && name.length > 2) {
+              // Extract additional data
+              let website = '';
+              let description = '';
+              let logo = '';
+              let industry = '';
+              let location = '';
+              let employees = '';
+              
+              // Extract website/link
+              const linkEl = element.querySelector('a[href]') || 
+                            (element.tagName === 'A' ? element : null);
+              if (linkEl) {
+                const href = (linkEl as HTMLAnchorElement).href || linkEl.getAttribute('href') || '';
+                if (href) {
+                  if (href.startsWith('http') || href.includes('www') || href.includes('.com') || href.includes('.fr') || href.includes('.io')) {
+                    website = href;
+                  } else if (href.startsWith('/')) {
+                    website = window.location.origin + href;
+                  }
+                }
+              }
+              
+              // Look for external website links in text or attributes
+              if (!website) {
+                const websitePattern = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.(com|io|fr|org|net|co)[^\s]*)/i;
+                const elementHtml = element.innerHTML;
+                const websiteMatch = elementHtml.match(websitePattern);
+                if (websiteMatch) {
+                  website = websiteMatch[0].startsWith('http') ? websiteMatch[0] : `https://${websiteMatch[0]}`;
+                }
+              }
+              
+              // Extract description
+              const descSelectors = [
+                '.description', '.summary', '.bio', '.content', '.excerpt',
+                '.about', '.overview', '.details', '.info',
+                '[data-testid*="description"]', '[data-testid*="summary"]',
+                'p', '.text', '.caption'
+              ];
+              for (const descSelector of descSelectors) {
+                const descEl = element.querySelector(descSelector);
+                if (descEl?.textContent?.trim() && descEl.textContent.trim().length > 10) {
+                  description = descEl.textContent.trim().substring(0, 300);
+                  if (description !== name) { // Don't use the same text as name
+                    break;
+                  }
+                }
+              }
+              
+              // Extract logo
+              const logoEl = element.querySelector('img, .logo, .avatar, [data-testid*="logo"], [class*="logo"]');
+              if (logoEl) {
+                logo = logoEl.getAttribute('src') || 
+                       logoEl.getAttribute('data-src') || 
+                       logoEl.getAttribute('data-lazy') ||
+                       logoEl.getAttribute('srcset')?.split(' ')[0] || '';
+                
+                // Convert relative URLs to absolute
+                if (logo && logo.startsWith('/')) {
+                  logo = window.location.origin + logo;
+                }
+              }
+              
+              // Extract industry/category with healthcare focus
+              const industrySelectors = [
+                '.category', '.industry', '.sector', '.tag', '.badge',
+                '.type', '.field', '.domain', '.vertical', '.specialty',
+                '[data-testid*="category"]', '[data-testid*="industry"]',
+                '[data-testid*="sector"]'
+              ];
+              for (const industrySelector of industrySelectors) {
+                const industryEl = element.querySelector(industrySelector);
+                if (industryEl?.textContent?.trim()) {
+                  industry = industryEl.textContent.trim();
+                  break;
+                }
+              }
+              
+              // Check if it's healthcare related from text content
+              if (!industry || industry === 'Not specified') {
+                const text = element.textContent?.toLowerCase() || '';
+                const healthcareKeywords = ['health', 'medical', 'wellness', 'biotech', 'pharma', 'clinical', 'therapeutic', 'diagnostic'];
+                const foundKeyword = healthcareKeywords.find(keyword => text.includes(keyword));
+                if (foundKeyword) {
+                  industry = 'Healthcare & Wellness';
+                }
+              }
+              
+              // Extract location
+              const locationSelectors = [
+                '.location', '.address', '.city', '.country', '.place',
+                '.geo', '.region', '[data-testid*="location"]',
+                '[data-testid*="address"]'
+              ];
+              for (const locationSelector of locationSelectors) {
+                const locationEl = element.querySelector(locationSelector);
+                if (locationEl?.textContent?.trim()) {
+                  location = locationEl.textContent.trim();
+                  break;
+                }
+              }
+              
+              // Extract employee count (comprehensive patterns)
+              const employeeSelectors = [
+                '.employees', '.size', '.team-size', '.headcount', '.staff',
+                '[data-testid*="employee"]', '[data-testid*="size"]',
+                '[data-testid*="team"]'
+              ];
+              for (const empSelector of employeeSelectors) {
+                const empEl = element.querySelector(empSelector);
+                if (empEl?.textContent?.trim()) {
+                  employees = empEl.textContent.trim();
+                  break;
+                }
+              }
+              
+              // Look for employee count in text content
+              if (!employees) {
+                const text = element.textContent || '';
+                const employeePatterns = [
+                  /(\d+[\s,]*\d*)\s*employees?/i,
+                  /team\s*of\s*(\d+)/i,
+                  /(\d+)\s*people/i,
+                  /size[:\s]*(\d+)/i,
+                  /(\d+)\s*collaborateurs?/i,
+                  /équipe\s*de\s*(\d+)/i,
+                  /(\d+)\s*membres?/i,
+                  /staff\s*of\s*(\d+)/i
+                ];
+                
+                for (const pattern of employeePatterns) {
+                  const match = text.match(pattern);
+                  if (match) {
+                    employees = match[1].replace(/[,\s]/g, '') + ' employees';
+                    break;
+                  }
+                }
+              }
+
+              // Check for duplicates (case insensitive)
+              const isDuplicate = companies.some(existing => 
+                existing.name.toLowerCase().trim() === name.toLowerCase().trim()
+              );
+
+              if (!isDuplicate) {
+                companies.push({
+                  name: name.substring(0, 200), // Limit name length
+                  website: website || '',
+                  description: description || `${name} - Healthcare company from VivaTechnology`,
+                  logo: logo || '',
+                  industry: industry || 'Healthcare & Technology',
+                  location: location || 'France',
+                  employees: employees || 'Not specified',
+                  additionalData: {
+                    extractedWith: selector,
+                    elementIndex: elementIndex,
+                    selectorIndex: selectorIndex,
+                    source: 'VivaTechnology',
+                    originalUrl: window.location.href,
+                    hasWebsite: !!website,
+                    extractionMethod: 'enhanced'
+                  }
+                });
+                extractedCount++;
+                console.log(`[VivaTech] Extracted company ${extractedCount}: ${name}`);
+              }
+            }
+          } catch (elementError) {
+            console.warn(`[VivaTech] Error processing element ${elementIndex}:`, elementError);
+          }
         }
-      });
-    });
+        
+        console.log(`[VivaTech] Selector "${selector}" extracted ${extractedCount} companies`);
+        
+        if (companies.length > 0) {
+          console.log(`[VivaTech] Successfully extracted ${companies.length} companies with selector: ${selector}`);
+          break; // Found companies, stop trying other selectors
+        }
+      }
+    }
+
+    // If no structured companies found, try text-based extraction as fallback
+    if (companies.length === 0) {
+      console.log('[VivaTech] No structured companies found, trying text extraction fallback...');
+      
+      // Strategy: Look for healthcare-related links
+      const healthcareKeywords = ['health', 'medical', 'wellness', 'biotech', 'pharma', 'clinical', 'therapeutic', 'diagnostic', 'care', 'medtech'];
+      const allLinks = document.querySelectorAll('a[href]');
+      
+      let linkCount = 0;
+      for (let i = 0; i < Math.min(allLinks.length, 100); i++) {
+        if (linkCount >= 20) break;
+        
+        const link = allLinks[i];
+        const text = link.textContent?.trim();
+        const href = link.getAttribute('href');
+        
+        if (text && href && text.length > 2 && text.length < 80) {
+          // Check if it's healthcare related
+          const isHealthcareRelated = healthcareKeywords.some(keyword => 
+            text.toLowerCase().includes(keyword) || 
+            href.toLowerCase().includes(keyword)
+          );
+          
+          // Skip navigation and generic links
+          const skipTerms = ['home', 'about', 'contact', 'login', 'register', 'menu', 'search', 'more', 'view', 'see', 'read', 'learn', 'discover', 'back', 'next', 'previous', 'page'];
+          const isNavigation = skipTerms.some(term => text.toLowerCase().includes(term));
+          
+          if ((isHealthcareRelated || href.includes('/partner') || href.includes('/company')) && !isNavigation) {
+            const isDuplicate = companies.some(c => c.name.toLowerCase() === text.toLowerCase());
+            
+            if (!isDuplicate) {
+              companies.push({
+                name: text,
+                website: href.startsWith('http') ? href : window.location.origin + href,
+                description: `${text} - Healthcare company extracted from VivaTechnology link`,
+                logo: '',
+                industry: 'Healthcare & Technology',
+                location: 'France',
+                employees: 'Not specified',
+                additionalData: {
+                  extractedWith: 'link-fallback',
+                  source: 'VivaTechnology',
+                  originalHref: href,
+                  isHealthcareRelated,
+                  extractionMethod: 'fallback'
+                }
+              });
+              linkCount++;
+              console.log(`[VivaTech] Fallback extracted: ${text}`);
+            }
+          }
+        }
+      }
+    }
+
+    console.log(`[VivaTech] Final extraction result: ${companies.length} companies`);
+    console.log(`[VivaTech] Selector statistics:`, selectorStats);
     
+    // Return results with metadata
+    return companies;
+  });
+}
+
+// Generic extraction for other sites
+async function extractGenericCompanies(page: import('puppeteer').Page) {
+  return await page.evaluate(() => {
+    const companySelectors = [
+      '.partner-card', '.company-card', '.exhibitor-card',
+      '[data-testid*="partner"]', '[data-testid*="company"]',
+      '.partner-item', '.grid-item', '.card', '.partner',
+      '.startup-card', '.vendor-card', '.member-card',
+      '.listing-item', '.directory-item', '.profile-card',
+      'article', '[class*="company"]', '[class*="partner"]'
+    ];
+
+    const companies: Array<{
+      name: string;
+      website?: string;
+      description?: string;
+      logo?: string;
+      industry?: string;
+      location?: string;
+      employees?: string;
+      additionalData?: Record<string, unknown>;
+    }> = [];
+
+    // Try each selector
+    for (const selector of companySelectors) {
+      const elements = document.querySelectorAll(selector);
+      
+      if (elements.length > 0) {
+        elements.forEach((element, index) => {
+          if (companies.length >= 50) return;
+          
+          try {
+            const nameEl = element.querySelector('h1, h2, h3, h4, h5, h6, .name, .title');
+            const name = nameEl?.textContent?.trim();
+            
+            if (name && name.length > 2) {
+              const linkEl = element.querySelector('a[href]');
+              const website = linkEl?.getAttribute('href') || '';
+              
+              companies.push({
+                name,
+                website,
+                description: `Company extracted from ${window.location.hostname}`,
+                logo: '',
+                industry: 'Not specified',
+                location: 'Not specified',
+                employees: 'Not specified',
+                additionalData: { extractedWith: selector, elementIndex: index }
+              });
+            }
+          } catch (error) {
+            console.warn(`Error processing element ${index}:`, error);
+          }
+        });
+          if (companies.length > 0) break;
+      }
+    }
+
     return companies;
   });
 }
@@ -1277,10 +1584,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<MCPRespon
       return NextResponse.json({
         success: false,
         error: 'Tool name is required'
-      }, { status: 400 });    }
+      }, { status: 400 });
+    }
 
     let result;
-      switch (tool) {
+    
+    switch (tool) {
       case 'multi_search':
         result = await multiProviderSearch(args);
         break;
@@ -1303,20 +1612,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<MCPRespon
 
       case 'manage_conversation':
         result = await manageConversation(args);
-        break;
-
-      case 'get_tetika_status':
-        result = await getTetikaStatus(args);
-        break;      case 'fetch_web_content':
-        result = await fetchWebContent(args);
+        break;      case 'intelligent_navigation':
+        // Use the same enhanced extraction function for intelligent navigation
+        result = await extractCompanyData(args);
         break;
 
       case 'extract_company_data':
         result = await extractCompanyData(args);
-        break;
-
-      case 'intelligent_navigation':
-        result = await intelligentNavigation(args);
         break;
 
       default:
@@ -1329,13 +1631,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<MCPRespon
     return NextResponse.json({
       success: true,
       data: result
-    });
-
-  } catch (error) {
-    console.error('MCP API error:', error);
+    });  } catch (error) {
+    console.error('MCP API Error:', error);
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }

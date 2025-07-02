@@ -1240,12 +1240,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               // Add companies directly to results for analysis
               results.companies = mcpResult.companies;
               results.mcpMethod = mcpResult.method;
-              results.totalFound = mcpResult.totalFound;
-            } else {
+              results.totalFound = mcpResult.totalFound;            } else {
               // Fallback to Puppeteer if MCP fails
-              console.log(`[POST] MCP failed (${mcpResult.error}), falling back to Puppeteer`);
+              console.log(`[POST] MCP failed (${mcpResult.error || 'Unknown error'}), falling back to Puppeteer`);
               scraper.updateStep(searchStepId, 'error', { 
-                error: mcpResult.error,
+                error: mcpResult.error || 'MCP navigation failed',
                 fallbackMethod: 'Puppeteer' 
               });
               
@@ -1256,19 +1255,75 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               );
               
               try {
-                searchResults = await performDirectUrlScraping(targetUrl, maxSources);
+                const puppeteerResults = await performDirectUrlScraping(targetUrl, maxSources);
+                
+                // Convert Puppeteer results to expected format
+                searchResults = puppeteerResults.map(company => ({
+                  name: company.name,
+                  website: company.website,
+                  description: company.description,
+                  employees: company.employees || 'Unknown',
+                  industry: company.industry || 'Unknown',
+                  location: company.location || 'Unknown',
+                  logo: company.logo || '',
+                  ...company.additionalData
+                }));
+                
                 scraper.addSource(fallbackStepId, targetUrl);
                 scraper.updateStep(fallbackStepId, 'completed', {
                   targetUrl,
                   companiesFound: searchResults.length,
                   scrapingMethod: 'Puppeteer Fallback'
                 });
+                
+                // Add companies to results
+                results.companies = puppeteerResults;
+                results.mcpMethod = 'Puppeteer Fallback';
+                results.totalFound = puppeteerResults.length;
+                
               } catch (puppeteerError) {
                 console.error('Puppeteer fallback also failed:', puppeteerError);
                 scraper.updateStep(fallbackStepId, 'error', { error: (puppeteerError as Error).message });
                 
-                // Final fallback to search if both MCP and Puppeteer fail
-                isDirectUrl = false;
+                // Final fallback: try basic HTTP scraping
+                const basicStepId = scraper.addStep(
+                  '🌐 Basic HTTP Fallback',
+                  `All advanced methods failed, trying basic HTTP scraping for: ${targetUrl}`
+                );
+                
+                try {
+                  const basicResults = await performBasicHttpScraping(targetUrl, maxSources);
+                  
+                  searchResults = basicResults.map(company => ({
+                    name: company.name,
+                    website: company.website,
+                    description: company.description,
+                    employees: company.employees || 'Unknown',
+                    industry: company.industry || 'Unknown',
+                    location: company.location || 'Unknown',
+                    logo: company.logo || '',
+                    ...company.additionalData
+                  }));
+                  
+                  scraper.addSource(basicStepId, targetUrl);
+                  scraper.updateStep(basicStepId, 'completed', {
+                    targetUrl,
+                    companiesFound: searchResults.length,
+                    scrapingMethod: 'Basic HTTP Fallback'
+                  });
+                  
+                  results.companies = basicResults;
+                  results.mcpMethod = 'Basic HTTP Fallback';
+                  results.totalFound = basicResults.length;
+                  
+                } catch (finalError) {
+                  console.error('All scraping methods failed:', finalError);
+                  scraper.updateStep(basicStepId, 'error', { error: (finalError as Error).message });
+                  
+                  // If all methods fail, still continue with search-based approach
+                  console.log('[POST] All direct scraping methods failed, switching to search-based approach');
+                  isDirectUrl = false;
+                }
               }
             }
           } catch (error) {
