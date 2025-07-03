@@ -1,9 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import puppeteer from 'puppeteer';
+import puppeteer, { Browser, Page } from 'puppeteer';
 import { cleanApiKey } from '@/lib/api';
 import { fetchMCPProvider } from '@/lib/fetch-mcp-provider';
+// Session management types
+interface ScrapingSession {
+  sessionId: string;
+  url: string;
+  step: 'analyzing' | 'analyzed' | 'extracting' | 'completed' | 'initialized';
+  pageInfo?: PageInfo;
+  instructions?: string;
+  results?: ScrapingResults;
+  error?: string;
+  timestamp: string;
+  browser?: Browser;
+  page?: Page;
+}
+
+interface PageInfo {
+  title: string;
+  description: string;
+  url: string;
+  availableElements: PageElement[];
+  availableLinks: AvailableLink[];
+  totalElements: number;
+  bodyTextLength: number;
+}
+
+interface ScrapingResults {
+  success: boolean;
+  totalResults: number;
+  extractedData: ExtractedItem[];
+  message?: string;
+  stats?: {
+    withLinks: number;
+    withImages: number;
+    withPrices: number;
+    withEmails: number;
+    withPhones: number;
+  };
+}
+
+interface PageElement {
+  type: string;
+  count: number;
+  selector: string;
+  sampleText?: string;
+}
+
+interface AvailableLink {
+  text: string;
+  href: string;
+  type: string;
+}
+
+interface ExtractedItem {
+  [key: string]: unknown;
+  link?: string;
+  image?: string;
+  price?: string;
+  email?: string;
+  phone?: string;
+}
 
 interface MCPRequest {
   tool: string;
@@ -39,11 +98,6 @@ interface FetchMCPResult {
     error?: string;
     provider: string;
   };
-}
-
-interface FetchOptions {
-  maxResults?: number;
-  headers?: Record<string, string>;
 }
 
 interface SearchResponse {
@@ -627,486 +681,53 @@ async function chatWithAI(args: Record<string, unknown>) {  try {
   }
 }
 
-// Unused function - kept for potential future use
-/*
-async function getTetikaStatus(args: Record<string, unknown>) {
-  const { include_models = true, include_settings = true } = args;
+// Interactive Scraper Session Management
+// Simple in-memory storage for demo (in production, use Redis or database)
+const scrapingSessions = new Map<string, ScrapingSession>();
 
-  const status = {
-    name: 'Tetika AI Agent',
-    version: '0.2.0',
-    description: 'Advanced AI chat interface with multi-model support and RAG capabilities',
-    capabilities: [
-      'Multi-model AI chat (OpenRouter integration)',
-      'RAG-enhanced responses with web search',
-      'File analysis (documents, images, videos)',
-      'Conversation management',
-      'Real-time web search',
-      'Secure local API key storage',
-    ],
-    status: 'active',
-    timestamp: new Date().toISOString(),
-  };
-
-  const responseData: Record<string, unknown> = { ...status };
-
-  if (include_models) {
-    responseData.available_models = [
-      'gpt-4-turbo-preview',
-      'gpt-4',
-      'gpt-3.5-turbo',
-      'claude-3-opus',
-      'claude-3-sonnet',
-      'claude-3-haiku',
-      'gemini-pro',
-      'llama-2-70b-chat',
-      'mistral-large',
-    ];
-  }
-  if (include_settings) {
-    responseData.configuration = {
-      default_mode: 'standard',
-      rag_enabled: true,
-      web_search_enabled: true,
-      file_analysis_enabled: true,
-      max_conversation_history: 50,
-      api_keys_configured: {
-        openrouter: !!process.env.OPENROUTER_API_KEY,
-        serpapi: !!process.env.SERPAPI_API_KEY,
-      },
-    };
-  }
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(responseData, null, 2),
-      },
-    ],
-  };
-}
-*/
-
-async function manageConversation(args: Record<string, unknown>) {
-  const { action, session_id, title, limit = 10 } = args;
-
+// Interactive Scraper Tool - Step-by-step workflow
+async function interactiveScraper(args: Record<string, unknown>) {
+  const { action, sessionId, url, instructions, linkSelectors, dataSelectors } = args;
+  
+  console.log(`[Interactive Scraper] Action: ${action}`);
+  
   try {
     switch (action) {
-      case 'create':
-        const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        const newSession = {
-          id: newSessionId,
-          title: title || 'New Conversation',
-          messages: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                action: 'create',
-                session: newSession,
-                message: 'Conversation created successfully',
-              }, null, 2),
-            },
-          ],
-        };
-
-      case 'list':
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                action: 'list',
-                total: 0,
-                limit,
-                sessions: [],
-                message: 'No conversations found (mock implementation)',
-              }, null, 2),
-            },
-          ],
-        };
-
+      case 'start':
+        return await startScrapingSession(url as string);
+      
+      case 'analyze':
+        return await analyzePageContent(sessionId as string);
+      
+      case 'extract':
+        return await extractWithInstructions(
+          sessionId as string, 
+          instructions as string,
+          linkSelectors as string[],
+          dataSelectors as string[]
+        );
+      
+      case 'get_session':
+        return await getSessionInfo(sessionId as string);
+      
+      case 'cleanup':
+        return await cleanupSession(sessionId as string);
+      
       default:
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                action,
-                message: `Action "${action}" completed (mock implementation)`,
-              }, null, 2),
-            },
-          ],
-        };
+        throw new Error(`Unknown action: ${action}`);
     }
   } catch (error) {
-    console.error('Conversation management error:', error);
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            error: 'Conversation management failed',
-            message: error instanceof Error ? error.message : 'Unknown error',
-            action,
-            session_id,
-          }, null, 2),
-        },
-      ],
-      isError: true,
-    };
-  }
-}
-
-async function analyzeFile(args: Record<string, unknown>) {
-  const { 
-    file_path, 
-    file_type, 
-    analysis_type = 'auto', 
-    questions = [] 
-  } = args;
-
-  try {
-    const fileName = file_path && typeof file_path === 'string' ? file_path.split('/').pop() || 'unknown' : 'uploaded_file';
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            file_name: fileName,
-            file_type: file_type,
-            analysis_type: analysis_type,
-            questions_asked: questions,
-            analysis: `File analysis completed for ${fileName} (${file_type}). This is a mock implementation. In a full implementation, this would analyze the file content using AI capabilities.`,
-            note: 'This is a mock implementation. Full file analysis would require integration with vision models and document parsing capabilities.',
-          }, null, 2),
-        },
-      ],
-      metadata: {
-        file_analyzed: fileName,
-        file_type: file_type,
-        analysis_method: analysis_type,
-        mock: true,
-      },
-    };
-  } catch (error) {
-    console.error('File analysis error:', error);
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            error: 'File analysis failed',
-            message: error instanceof Error ? error.message : 'Unknown error',
-            file_path: file_path || 'content provided',
-            file_type: file_type,
-          }, null, 2),
-        },
-      ],
-      isError: true,
-    };
-  }
-}
-
-async function fetchWebContent(args: Record<string, unknown>) {
-  try {
-    const { url, options = {} } = args;
-    
-    if (!url || typeof url !== 'string') {
-      throw new Error('URL is required and must be a string');
-    }
-    
-    console.log(`[MCP] Fetch de contenu web: ${url}`);
-    
-    const result = await fetchMCPProvider.fetchUrl(url, options as FetchOptions);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            success: result.success,
-            url: result.url,
-            title: result.title,
-            snippet: result.snippet,
-            content: result.content.substring(0, 4000), // Limit for response size
-            metadata: result.metadata,
-            error: result.error
-          }, null, 2)
-        }
-      ],
-      isError: !result.success
-    };
-  } catch (error) {
-    console.error('Fetch web content error:', error);
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            error: 'Failed to fetch web content',
-            message: error instanceof Error ? error.message : 'Unknown error',
-            url: args.url || 'Invalid URL'
-          }, null, 2)
-        }
-      ],
-      isError: true
-    };
-  }
-}
-
-// Enhanced company data extraction function
-async function extractCompanyData(args: Record<string, unknown>) {
-  try {
-    const { url, extractionMode = 'companies', maxResults = 50, instructions } = args;
-    
-    if (!url || typeof url !== 'string') {
-      throw new Error('URL is required and must be a string');
-    }
-    
-    console.log(`[MCP] Starting enhanced extraction for: ${url}`);
-    console.log(`[MCP] Instructions: ${instructions || 'Default company extraction'}`);
-    
-    let browser;
-    
-    try {
-      // Enhanced browser configuration for anti-bot protection
-      browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--window-size=1920,1080',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-web-security',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-background-media-suspend',
-          '--disable-hang-monitor',
-          '--disable-client-side-phishing-detection',
-          '--disable-default-apps',
-          '--disable-extensions',
-          '--disable-sync',
-          '--disable-translate',
-          '--metrics-recording-only',
-          '--no-first-run',
-          '--safebrowsing-disable-auto-update',
-          '--enable-automation',
-          '--password-store=basic',
-          '--use-mock-keychain'
-        ],
-        defaultViewport: null,
-        ignoreDefaultArgs: ['--enable-automation']
-      });
-      
-      const page = await browser.newPage();
-      
-      // Enhanced page configuration
-      await page.setViewport({ width: 1920, height: 1080 });
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-      
-      // Set additional headers
-      await page.setExtraHTTPHeaders({
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Cache-Control': 'max-age=0'
-      });
-      
-      // Handle potential dialog boxes
-      page.on('dialog', async dialog => {
-        console.log(`[MCP] Dialog appeared: ${dialog.message()}`);
-        await dialog.accept();
-      });
-      
-      // Multiple navigation attempts for resilience
-      let navigationSuccess = false;
-      const maxRetries = 3;
-      
-      for (let attempt = 1; attempt <= maxRetries && !navigationSuccess; attempt++) {
-        try {
-          console.log(`[MCP] Navigation attempt ${attempt}/${maxRetries}`);
-          
-          // Try different navigation strategies
-          if (attempt === 1) {
-            // Standard navigation
-            await page.goto(url, { 
-              waitUntil: 'networkidle2', 
-              timeout: 30000 
-            });
-          } else if (attempt === 2) {
-            // Fallback to domcontentloaded
-            await page.goto(url, { 
-              waitUntil: 'domcontentloaded', 
-              timeout: 20000 
-            });
-          } else {
-            // Final attempt with load event only
-            await page.goto(url, { 
-              waitUntil: 'load', 
-              timeout: 15000 
-            });
-          }
-          
-          navigationSuccess = true;
-          console.log(`[MCP] Navigation successful on attempt ${attempt}`);
-          
-        } catch (navError) {
-          console.warn(`[MCP] Navigation attempt ${attempt} failed:`, navError instanceof Error ? navError.message : String(navError));
-          
-          if (attempt < maxRetries) {
-            // Wait before retry
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        }
-      }
-      
-      if (!navigationSuccess) {
-        throw new Error('Failed to navigate to the target URL after multiple attempts');
-      }
-      
-      // Enhanced waiting strategy
-      console.log('[MCP] Waiting for page to stabilize...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Try to wait for common loading indicators to disappear
-      try {
-        await page.waitForFunction(() => {
-          const loadingIndicators = document.querySelectorAll(
-            '.loading, .spinner, .loader, [class*="loading"], [class*="spinner"]'
-          );
-          return loadingIndicators.length === 0;
-        }, { timeout: 5000 });      } catch {
-        console.log('[MCP] Loading indicators check timed out, proceeding...');
-      }
-      
-      // Intelligent scrolling for dynamic content
-      console.log('[MCP] Performing intelligent scrolling...');
-      await page.evaluate(async () => {
-        const scrollDelay = 1000;
-        const maxScrolls = 5;
-        let lastHeight = document.body.scrollHeight;
-        
-        for (let i = 0; i < maxScrolls; i++) {
-          window.scrollTo(0, document.body.scrollHeight);
-          await new Promise(resolve => setTimeout(resolve, scrollDelay));
-          
-          const newHeight = document.body.scrollHeight;
-          if (newHeight === lastHeight) {
-            break; // No new content loaded
-          }
-          lastHeight = newHeight;
-        }
-        
-        // Scroll back to top
-        window.scrollTo(0, 0);
-        await new Promise(resolve => setTimeout(resolve, 500));
-      });
-      
-      // Additional wait for lazy-loaded content
-      await new Promise(resolve => setTimeout(resolve, 2000));
-        // Extract company data using the current page URL for detection
-      const currentUrl = page.url();
-      let companies = [];
-      let extractionMethod = 'Unknown';
-      let debugInfo = {};
-      
-      if (currentUrl.includes('vivatechnology.com')) {
-        console.log('[MCP] Using VivaTechnology-specific extraction');
-        extractionMethod = 'VivaTechnology Specialized';
-        companies = await extractVivaTechCompanies(page);
-          // Debug info for VivaTech
-        debugInfo = await page.evaluate(() => {
-          const selectors = [
-            '[data-testid*="partner"]',
-            '.partner-card',
-            '.company-card',
-            '.card',
-            'a[href*="/partner"]'
-          ];
-          
-          const selectorResults: Record<string, number> = {};
-          selectors.forEach(sel => {
-            selectorResults[sel] = document.querySelectorAll(sel).length;
-          });
-          
-          return {
-            title: document.title,
-            bodyLength: document.body.textContent?.length || 0,
-            selectorResults,
-            hasPartnerText: (document.body.textContent || '').toLowerCase().includes('partner'),
-            hasCompanyText: (document.body.textContent || '').toLowerCase().includes('company'),
-            totalElements: document.querySelectorAll('*').length
-          };
-        });
-        
-        console.log('[MCP] VivaTech debug info:', debugInfo);
-      } else {
-        console.log('[MCP] Using generic company extraction');
-        extractionMethod = 'Generic';
-        companies = await extractGenericCompanies(page);
-      }
-      
-      console.log(`[MCP] Extracted ${companies.length} companies from page`);
-      
-      // Determine if extraction was successful
-      const extractionSuccess = companies.length > 0 || !currentUrl.includes('vivatechnology.com');
-      
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              success: extractionSuccess,
-              url: currentUrl,
-              extractionMode,
-              totalFound: companies.length,
-              companies: companies.slice(0, Number(maxResults)),
-              method: `MCP Enhanced Puppeteer Extraction (${extractionMethod})`,
-              timestamp: new Date().toISOString(),
-              instructions: instructions || 'Default extraction',
-              debugInfo: currentUrl.includes('vivatechnology.com') ? debugInfo : undefined,
-              warning: companies.length === 0 && currentUrl.includes('vivatechnology.com') ? 
-                'No companies extracted from VivaTech - likely due to anti-bot protection or page structure changes' : undefined
-            }, null, 2)
-          }
-        ],
-        isError: !extractionSuccess
-      };
-      
-    } finally {
-      if (browser) {
-        await browser.close();
-      }
-    }
-    
-  } catch (error) {
-    console.error('Enhanced company extraction error:', error);
+    console.error('Interactive scraper error:', error);
     return {
       content: [
         {
           type: 'text',
           text: JSON.stringify({
             success: false,
-            error: 'Failed to extract company data',
+            error: 'Interactive scraper failed',
             message: error instanceof Error ? error.message : 'Unknown error',
-            url: args.url || 'Invalid URL',
-            extractionMode: args.extractionMode,
-            timestamp: new Date().toISOString()
+            action,
+            sessionId
           }, null, 2)
         }
       ],
@@ -1115,465 +736,752 @@ async function extractCompanyData(args: Record<string, unknown>) {
   }
 }
 
-// Specialized extraction for VivaTechnology
-async function extractVivaTechCompanies(page: import('puppeteer').Page) {
-  console.log('[MCP] Starting VivaTech-specific company extraction...');
+// Step 1: Start scraping session and navigate to URL
+async function startScrapingSession(url: string) {
+  if (!url || typeof url !== 'string') {
+    throw new Error('URL is required and must be a string');
+  }
   
-  return await page.evaluate(async () => {
-    console.log('[VivaTech] Starting evaluation inside browser context...');
+  // Validate and fix URL format
+  let validUrl = url.trim();
+  
+  // Add protocol if missing
+  if (!validUrl.startsWith('http://') && !validUrl.startsWith('https://')) {
+    validUrl = `https://${validUrl}`;
+  }
+  
+  // Validate URL format
+  try {
+    new URL(validUrl);
+  } catch {
+    throw new Error(`Invalid URL format: ${url}`);
+  }
+  
+  const sessionId = `scrape_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  console.log(`[Interactive Scraper] Starting session ${sessionId} for ${validUrl}`);
+  
+  try {
+    // Launch browser with enhanced anti-bot protection
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--window-size=1920,1080',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-web-security',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--mute-audio',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-infobars',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-features=VizDisplayCompositor',
+        '--force-color-profile=srgb',
+        '--disable-background-networking'
+      ],
+      defaultViewport: null,
+      ignoreDefaultArgs: ['--enable-automation']
+    });
     
-    // First, let's analyze what we have on the page
-    const pageAnalysis = {
-      title: document.title,
-      url: window.location.href,
-      bodyText: document.body.textContent?.substring(0, 500) || '',
-      totalElements: document.querySelectorAll('*').length,
-      totalLinks: document.querySelectorAll('a').length,
-      hasHealthcare: (document.body.textContent || '').toLowerCase().includes('healthcare'),
-      hasPartners: (document.body.textContent || '').toLowerCase().includes('partner'),
-      hasWellness: (document.body.textContent || '').toLowerCase().includes('wellness')
+    const page = await browser.newPage();
+    
+    // Enhanced page configuration with better stealth
+    await page.setViewport({ width: 1920, height: 1080 });
+    
+    // Rotate user agents for better stealth
+    const userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    ];
+    
+    const randomUserAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
+    await page.setUserAgent(randomUserAgent);
+    
+    // Set additional headers with more realistic values
+    await page.setExtraHTTPHeaders({
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Cache-Control': 'max-age=0'
+    });
+    
+    // Add JavaScript execution context to mask automation
+    await page.evaluateOnNewDocument(() => {
+      // Remove webdriver property
+      delete (navigator as unknown as { webdriver?: unknown }).webdriver;
+      
+      // Mock plugins
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5].map(() => 'plugin')
+      });
+      
+      // Mock languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en', 'fr']
+      });
+      
+      // Mock permissions
+      const originalQuery = window.navigator.permissions.query;
+      (window.navigator.permissions as unknown as { query: (params: unknown) => Promise<unknown> }).query = (parameters: unknown) => (
+        (parameters as { name: string }).name === 'notifications' ?
+          Promise.resolve({ state: Notification.permission }) :
+          originalQuery(parameters as PermissionDescriptor)
+      );
+    });
+    
+    // Multiple navigation strategies with enhanced fallbacks
+    let navigationSuccess = false;
+    let lastError;
+    let pageContent = '';
+    
+    const strategies = [
+      {
+        name: 'Standard Navigation with NetworkIdle',
+        options: { waitUntil: 'networkidle2' as const, timeout: 35000 },
+        postAction: async () => {
+          // Add random delay to mimic human behavior
+          await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 2000));
+          
+          // Simulate mouse movement
+          await page.mouse.move(Math.random() * 100, Math.random() * 100);
+          await page.mouse.move(Math.random() * 200, Math.random() * 200);
+        }
+      },
+      {
+        name: 'DOM Content Loaded with Stealth',
+        options: { waitUntil: 'domcontentloaded' as const, timeout: 30000 },
+        postAction: async () => {
+          // Wait longer for dynamic content
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Try to scroll to trigger any lazy loading
+          await page.evaluate(() => {
+            window.scrollTo(0, document.body.scrollHeight / 4);
+          });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      },
+      {
+        name: 'Load Event with Interaction',
+        options: { waitUntil: 'load' as const, timeout: 25000 },
+        postAction: async () => {
+          // Try to click somewhere safe to trigger any detection
+          try {
+            await page.click('body');
+          } catch {
+            // Ignore click errors
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      },
+      {
+        name: 'Basic Navigation with Retry',
+        options: { waitUntil: 'networkidle0' as const, timeout: 20000 },
+        postAction: async () => {
+          // Minimal post-action
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    ];
+    
+    console.log(`[Interactive Scraper] Trying multiple navigation strategies for: ${validUrl}`);
+    
+    for (const strategy of strategies) {
+      try {
+        console.log(`[Interactive Scraper] Attempting: ${strategy.name}`);
+        
+        // Add a pre-navigation delay to avoid rapid requests
+        if (strategies.indexOf(strategy) > 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        await page.goto(validUrl, strategy.options);
+        
+        // Execute post-action if defined
+        if (strategy.postAction) {
+          await strategy.postAction();
+        }
+        
+        // Verify page loaded by checking for basic elements and content
+        const pageTitle = await page.title();
+        pageContent = await page.content();
+        
+        // Check if we got meaningful content (not just an error page)
+        const hasContent = pageContent.length > 1000 && 
+                          !pageContent.includes('Access denied') &&
+                          !pageContent.includes('Blocked') &&
+                          !pageContent.includes('Please enable JavaScript') &&
+                          !pageContent.includes('bot detected');
+        
+        if (pageTitle && pageTitle.length > 0 && hasContent) {
+          console.log(`[Interactive Scraper] Success with ${strategy.name} - Page title: ${pageTitle}`);
+          console.log(`[Interactive Scraper] Page content length: ${pageContent.length}`);
+          navigationSuccess = true;
+          break;
+        } else {
+          console.log(`[Interactive Scraper] ${strategy.name} loaded but content seems blocked or minimal`);
+          console.log(`[Interactive Scraper] Title: ${pageTitle || 'none'}, Content length: ${pageContent.length}`);
+        }
+        
+      } catch (error) {
+        console.log(`[Interactive Scraper] ${strategy.name} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        lastError = error;
+        
+        // Wait before trying next strategy
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    if (!navigationSuccess) {
+      console.error(`[Interactive Scraper] All navigation strategies failed for: ${validUrl}`);
+      await browser.close();
+      
+      // Provide detailed error information
+      const errorMessage = lastError instanceof Error ? lastError.message : 'Unknown error';
+      
+      // Check if this looks like anti-bot protection
+      const isAntiBot = errorMessage.includes('timeout') || 
+                        errorMessage.includes('TimeoutError') ||
+                        errorMessage.includes('Navigation timeout') ||
+                        pageContent.includes('Access denied') ||
+                        pageContent.includes('Blocked') ||
+                        pageContent.includes('bot detected');
+      
+      if (isAntiBot) {
+        throw new Error(
+          `Navigation failed - This site appears to have anti-bot protection.\n\n` +
+          `Site: ${validUrl}\n` +
+          `Error: ${errorMessage}\n\n` +
+          `Recommendations:\n` +
+          `1. Try accessing the site manually first to check if it's accessible\n` +
+          `2. The site may require JavaScript, cookies, or human verification\n` +
+          `3. Consider using a different URL or testing with a simpler page\n` +
+          `4. Some sites block automated access entirely\n\n` +
+          `For VivaTechnology specifically, try:\n` +
+          `- https://vivatechnology.com/ (main page)\n` +
+          `- Wait for the site to load completely before scraping\n` +
+          `- The site may require manual interaction to proceed`
+        );
+      } else {
+        throw new Error(`Failed to navigate to ${validUrl}. Error: ${errorMessage}`);
+      }
+    }
+    
+    // Create session
+    const session: ScrapingSession = {
+      sessionId,
+      url: validUrl,
+      step: 'initialized',
+      browser,
+      page,
+      timestamp: new Date().toISOString()
     };
     
-    console.log('[VivaTech] Page analysis:', pageAnalysis);
+    scrapingSessions.set(sessionId, session);
     
-    // VivaTech-specific selectors (more comprehensive)
-    const companySelectors = [
-      // Data attributes (most specific)
-      '[data-testid*="partner"]',
-      '[data-testid*="exhibitor"]',
-      '[data-testid*="startup"]',
-      '[data-testid*="company"]',
-      '[data-component*="partner"]',
-      '[data-component*="company"]',
-      
-      // Common class patterns for VivaTech
-      '.partner-card', '.exhibitor-card', '.startup-card', '.company-card',
-      '.sponsor-card', '.member-card', '.participant-card',
-      
-      // Generic card patterns
-      '.card', '.item', '.listing', '.entry', '.tile',
-      
-      // Class name contains
-      '[class*="card"]', '[class*="item"]', '[class*="partner"]',
-      '[class*="exhibitor"]', '[class*="startup"]', '[class*="company"]',
-      '[class*="sponsor"]', '[class*="member"]',
-      
-      // Link-based extraction for VivaTech
-      'a[href*="/partner"]', 'a[href*="/exhibitor"]', 'a[href*="/startup"]',
-      'a[href*="/company"]', 'a[href*="/sponsor"]',
-      
-      // Grid and list patterns
-      '.grid > div', '.list > div', '.directory > div',
-      '.partners > div', '.exhibitors > div', '.companies > div',
-      
-      // Article and section patterns
-      'article', 'section[class*="partner"]', 'section[class*="company"]',
-      
-      // Fallback patterns
-      'div[onclick]', '[role="button"]', '.clickable'
-    ];
-
-    const companies: Array<{
-      name: string;
-      website?: string;
-      description?: string;
-      logo?: string;
-      industry?: string;
-      location?: string;
-      employees?: string;
-      additionalData?: Record<string, unknown>;
-    }> = [];
-
-    console.log('[VivaTech] Searching for company elements with', companySelectors.length, 'selectors...');
-    
-    // Track what we find
-    const selectorStats: Record<string, number> = {};
-    
-    // Try each selector progressively
-    for (let selectorIndex = 0; selectorIndex < companySelectors.length; selectorIndex++) {
-      const selector = companySelectors[selectorIndex];
-      const elements = document.querySelectorAll(selector);
-      selectorStats[selector] = elements.length;
-      
-      console.log(`[VivaTech] Selector "${selector}": found ${elements.length} elements`);
-      
-      if (elements.length > 0) {
-        let extractedCount = 0;
-        
-        for (let elementIndex = 0; elementIndex < Math.min(elements.length, 100); elementIndex++) {
-          if (extractedCount >= 50) break; // Limit to avoid timeout
-          
-          const element = elements[elementIndex];
-          
-          try {
-            // Enhanced name extraction for VivaTech
-            let name = '';
-            
-            // Strategy 1: Look for headings and titles
-            const nameSelectors = [
-              'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-              '[data-testid*="name"]', '[data-testid*="title"]',
-              '.name', '.title', '.company-name', '.partner-name',
-              '.exhibitor-name', '.startup-name', '.sponsor-name',
-              '.heading', '.label', '.brand-name', '.organization'
-            ];
-            
-            for (const nameSelector of nameSelectors) {
-              const nameEl = element.querySelector(nameSelector);
-              if (nameEl?.textContent?.trim() && nameEl.textContent.trim().length > 2) {
-                name = nameEl.textContent.trim();
-                break;
-              }
-            }
-            
-            // Strategy 2: Check attributes
-            if (!name) {
-              name = element.getAttribute('aria-label') || 
-                     element.getAttribute('title') || 
-                     element.getAttribute('data-name') ||
-                     element.getAttribute('alt') || '';
-            }
-            
-            // Strategy 3: Look for clickable elements with meaningful text
-            if (!name) {
-              const clickableEl = element.querySelector('a, button, [role="button"], [tabindex]');
-              if (clickableEl?.textContent?.trim()) {
-                const text = clickableEl.textContent.trim();
-                // Filter out generic text
-                const genericTerms = ['learn more', 'read more', 'view', 'see', 'click', 'here', 'link', 'button', 'more info', 'details'];
-                const isGeneric = genericTerms.some(term => text.toLowerCase().includes(term));
-                
-                if (!isGeneric && text.length > 2 && text.length < 100) {
-                  name = text;
-                }
-              }
-            }
-            
-            // Strategy 4: Element's own text content (first meaningful line)
-            if (!name) {
-              const elementText = element.textContent?.trim();
-              if (elementText && elementText.length > 2) {
-                const lines = elementText.split('\n').map(line => line.trim()).filter(line => line.length > 2);
-                for (const line of lines) {
-                  if (line.length > 2 && line.length < 150) {
-                    // Skip lines that look like descriptions or generic text
-                    const skipPatterns = ['click to', 'learn more', 'read more', 'view all', 'see more', 'discover', 'explore'];
-                    const shouldSkip = skipPatterns.some(pattern => line.toLowerCase().includes(pattern));
-                    
-                    if (!shouldSkip) {
-                      name = line;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-
-            if (name && name.length > 2) {
-              // Extract additional data
-              let website = '';
-              let description = '';
-              let logo = '';
-              let industry = '';
-              let location = '';
-              let employees = '';
-              
-              // Extract website/link
-              const linkEl = element.querySelector('a[href]') || 
-                            (element.tagName === 'A' ? element : null);
-              if (linkEl) {
-                const href = (linkEl as HTMLAnchorElement).href || linkEl.getAttribute('href') || '';
-                if (href) {
-                  if (href.startsWith('http') || href.includes('www') || href.includes('.com') || href.includes('.fr') || href.includes('.io')) {
-                    website = href;
-                  } else if (href.startsWith('/')) {
-                    website = window.location.origin + href;
-                  }
-                }
-              }
-              
-              // Look for external website links in text or attributes
-              if (!website) {
-                const websitePattern = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.(com|io|fr|org|net|co)[^\s]*)/i;
-                const elementHtml = element.innerHTML;
-                const websiteMatch = elementHtml.match(websitePattern);
-                if (websiteMatch) {
-                  website = websiteMatch[0].startsWith('http') ? websiteMatch[0] : `https://${websiteMatch[0]}`;
-                }
-              }
-              
-              // Extract description
-              const descSelectors = [
-                '.description', '.summary', '.bio', '.content', '.excerpt',
-                '.about', '.overview', '.details', '.info',
-                '[data-testid*="description"]', '[data-testid*="summary"]',
-                'p', '.text', '.caption'
-              ];
-              for (const descSelector of descSelectors) {
-                const descEl = element.querySelector(descSelector);
-                if (descEl?.textContent?.trim() && descEl.textContent.trim().length > 10) {
-                  description = descEl.textContent.trim().substring(0, 300);
-                  if (description !== name) { // Don't use the same text as name
-                    break;
-                  }
-                }
-              }
-              
-              // Extract logo
-              const logoEl = element.querySelector('img, .logo, .avatar, [data-testid*="logo"], [class*="logo"]');
-              if (logoEl) {
-                logo = logoEl.getAttribute('src') || 
-                       logoEl.getAttribute('data-src') || 
-                       logoEl.getAttribute('data-lazy') ||
-                       logoEl.getAttribute('srcset')?.split(' ')[0] || '';
-                
-                // Convert relative URLs to absolute
-                if (logo && logo.startsWith('/')) {
-                  logo = window.location.origin + logo;
-                }
-              }
-              
-              // Extract industry/category with healthcare focus
-              const industrySelectors = [
-                '.category', '.industry', '.sector', '.tag', '.badge',
-                '.type', '.field', '.domain', '.vertical', '.specialty',
-                '[data-testid*="category"]', '[data-testid*="industry"]',
-                '[data-testid*="sector"]'
-              ];
-              for (const industrySelector of industrySelectors) {
-                const industryEl = element.querySelector(industrySelector);
-                if (industryEl?.textContent?.trim()) {
-                  industry = industryEl.textContent.trim();
-                  break;
-                }
-              }
-              
-              // Check if it's healthcare related from text content
-              if (!industry || industry === 'Not specified') {
-                const text = element.textContent?.toLowerCase() || '';
-                const healthcareKeywords = ['health', 'medical', 'wellness', 'biotech', 'pharma', 'clinical', 'therapeutic', 'diagnostic'];
-                const foundKeyword = healthcareKeywords.find(keyword => text.includes(keyword));
-                if (foundKeyword) {
-                  industry = 'Healthcare & Wellness';
-                }
-              }
-              
-              // Extract location
-              const locationSelectors = [
-                '.location', '.address', '.city', '.country', '.place',
-                '.geo', '.region', '[data-testid*="location"]',
-                '[data-testid*="address"]'
-              ];
-              for (const locationSelector of locationSelectors) {
-                const locationEl = element.querySelector(locationSelector);
-                if (locationEl?.textContent?.trim()) {
-                  location = locationEl.textContent.trim();
-                  break;
-                }
-              }
-              
-              // Extract employee count (comprehensive patterns)
-              const employeeSelectors = [
-                '.employees', '.size', '.team-size', '.headcount', '.staff',
-                '[data-testid*="employee"]', '[data-testid*="size"]',
-                '[data-testid*="team"]'
-              ];
-              for (const empSelector of employeeSelectors) {
-                const empEl = element.querySelector(empSelector);
-                if (empEl?.textContent?.trim()) {
-                  employees = empEl.textContent.trim();
-                  break;
-                }
-              }
-              
-              // Look for employee count in text content
-              if (!employees) {
-                const text = element.textContent || '';
-                const employeePatterns = [
-                  /(\d+[\s,]*\d*)\s*employees?/i,
-                  /team\s*of\s*(\d+)/i,
-                  /(\d+)\s*people/i,
-                  /size[:\s]*(\d+)/i,
-                  /(\d+)\s*collaborateurs?/i,
-                  /équipe\s*de\s*(\d+)/i,
-                  /(\d+)\s*membres?/i,
-                  /staff\s*of\s*(\d+)/i
-                ];
-                
-                for (const pattern of employeePatterns) {
-                  const match = text.match(pattern);
-                  if (match) {
-                    employees = match[1].replace(/[,\s]/g, '') + ' employees';
-                    break;
-                  }
-                }
-              }
-
-              // Check for duplicates (case insensitive)
-              const isDuplicate = companies.some(existing => 
-                existing.name.toLowerCase().trim() === name.toLowerCase().trim()
-              );
-
-              if (!isDuplicate) {
-                companies.push({
-                  name: name.substring(0, 200), // Limit name length
-                  website: website || '',
-                  description: description || `${name} - Healthcare company from VivaTechnology`,
-                  logo: logo || '',
-                  industry: industry || 'Healthcare & Technology',
-                  location: location || 'France',
-                  employees: employees || 'Not specified',
-                  additionalData: {
-                    extractedWith: selector,
-                    elementIndex: elementIndex,
-                    selectorIndex: selectorIndex,
-                    source: 'VivaTechnology',
-                    originalUrl: window.location.href,
-                    hasWebsite: !!website,
-                    extractionMethod: 'enhanced'
-                  }
-                });
-                extractedCount++;
-                console.log(`[VivaTech] Extracted company ${extractedCount}: ${name}`);
-              }
-            }
-          } catch (elementError) {
-            console.warn(`[VivaTech] Error processing element ${elementIndex}:`, elementError);
-          }
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            sessionId,
+            url: validUrl,
+            step: 'initialized',
+            message: 'Scraping session started successfully. Ready for page analysis.',
+            nextAction: 'Call with action="analyze" to analyze page content',
+            timestamp: session.timestamp
+          }, null, 2)
         }
-        
-        console.log(`[VivaTech] Selector "${selector}" extracted ${extractedCount} companies`);
-        
-        if (companies.length > 0) {
-          console.log(`[VivaTech] Successfully extracted ${companies.length} companies with selector: ${selector}`);
-          break; // Found companies, stop trying other selectors
-        }
-      }
-    }
-
-    // If no structured companies found, try text-based extraction as fallback
-    if (companies.length === 0) {
-      console.log('[VivaTech] No structured companies found, trying text extraction fallback...');
-      
-      // Strategy: Look for healthcare-related links
-      const healthcareKeywords = ['health', 'medical', 'wellness', 'biotech', 'pharma', 'clinical', 'therapeutic', 'diagnostic', 'care', 'medtech'];
-      const allLinks = document.querySelectorAll('a[href]');
-      
-      let linkCount = 0;
-      for (let i = 0; i < Math.min(allLinks.length, 100); i++) {
-        if (linkCount >= 20) break;
-        
-        const link = allLinks[i];
-        const text = link.textContent?.trim();
-        const href = link.getAttribute('href');
-        
-        if (text && href && text.length > 2 && text.length < 80) {
-          // Check if it's healthcare related
-          const isHealthcareRelated = healthcareKeywords.some(keyword => 
-            text.toLowerCase().includes(keyword) || 
-            href.toLowerCase().includes(keyword)
-          );
-          
-          // Skip navigation and generic links
-          const skipTerms = ['home', 'about', 'contact', 'login', 'register', 'menu', 'search', 'more', 'view', 'see', 'read', 'learn', 'discover', 'back', 'next', 'previous', 'page'];
-          const isNavigation = skipTerms.some(term => text.toLowerCase().includes(term));
-          
-          if ((isHealthcareRelated || href.includes('/partner') || href.includes('/company')) && !isNavigation) {
-            const isDuplicate = companies.some(c => c.name.toLowerCase() === text.toLowerCase());
-            
-            if (!isDuplicate) {
-              companies.push({
-                name: text,
-                website: href.startsWith('http') ? href : window.location.origin + href,
-                description: `${text} - Healthcare company extracted from VivaTechnology link`,
-                logo: '',
-                industry: 'Healthcare & Technology',
-                location: 'France',
-                employees: 'Not specified',
-                additionalData: {
-                  extractedWith: 'link-fallback',
-                  source: 'VivaTechnology',
-                  originalHref: href,
-                  isHealthcareRelated,
-                  extractionMethod: 'fallback'
-                }
-              });
-              linkCount++;
-              console.log(`[VivaTech] Fallback extracted: ${text}`);
-            }
-          }
-        }
-      }
-    }
-
-    console.log(`[VivaTech] Final extraction result: ${companies.length} companies`);
-    console.log(`[VivaTech] Selector statistics:`, selectorStats);
+      ],
+      isError: false
+    };
     
-    // Return results with metadata
-    return companies;
-  });
+  } catch (error) {
+    console.error(`[Interactive Scraper] Failed to start session:`, error);
+    throw error;
+  }
 }
 
-// Generic extraction for other sites
-async function extractGenericCompanies(page: import('puppeteer').Page) {
-  return await page.evaluate(() => {
-    const companySelectors = [
-      '.partner-card', '.company-card', '.exhibitor-card',
-      '[data-testid*="partner"]', '[data-testid*="company"]',
-      '.partner-item', '.grid-item', '.card', '.partner',
-      '.startup-card', '.vendor-card', '.member-card',
-      '.listing-item', '.directory-item', '.profile-card',
-      'article', '[class*="company"]', '[class*="partner"]'
-    ];
-
-    const companies: Array<{
-      name: string;
-      website?: string;
-      description?: string;
-      logo?: string;
-      industry?: string;
-      location?: string;
-      employees?: string;
-      additionalData?: Record<string, unknown>;
-    }> = [];
-
-    // Try each selector
-    for (const selector of companySelectors) {
-      const elements = document.querySelectorAll(selector);
+// Step 2: Analyze page content and provide available elements/links
+async function analyzePageContent(sessionId: string) {
+  const session = scrapingSessions.get(sessionId);
+  if (!session || !session.page) {
+    throw new Error('Invalid session ID or session not found');
+  }
+  
+  console.log(`[Interactive Scraper] Analyzing page content for session ${sessionId}`);
+  
+  try {
+    const pageInfo = await session.page.evaluate(() => {
+      // Analyze available elements
+      const elementTypes = [
+        { type: 'headings', selector: 'h1, h2, h3, h4, h5, h6' },
+        { type: 'links', selector: 'a[href]' },
+        { type: 'images', selector: 'img' },
+        { type: 'paragraphs', selector: 'p' },
+        { type: 'lists', selector: 'ul, ol' },
+        { type: 'tables', selector: 'table' },
+        { type: 'forms', selector: 'form' },
+        { type: 'buttons', selector: 'button, input[type="button"], input[type="submit"]' },
+        { type: 'cards', selector: '.card, [class*="card"], .item, [class*="item"]' },
+        { type: 'containers', selector: '.container, .wrapper, .content, [class*="container"]' }
+      ];
       
-      if (elements.length > 0) {
-        elements.forEach((element, index) => {
-          if (companies.length >= 50) return;
-          
-          try {
-            const nameEl = element.querySelector('h1, h2, h3, h4, h5, h6, .name, .title');
-            const name = nameEl?.textContent?.trim();
-            
-            if (name && name.length > 2) {
-              const linkEl = element.querySelector('a[href]');
-              const website = linkEl?.getAttribute('href') || '';
-              
-              companies.push({
-                name,
-                website,
-                description: `Company extracted from ${window.location.hostname}`,
-                logo: '',
-                industry: 'Not specified',
-                location: 'Not specified',
-                employees: 'Not specified',
-                additionalData: { extractedWith: selector, elementIndex: index }
-              });
+      const availableElements = elementTypes.map(({ type, selector }) => {
+        const elements = document.querySelectorAll(selector);
+        const sampleElement = elements[0];
+        
+        return {
+          type,
+          count: elements.length,
+          selector,
+          sampleText: sampleElement ? 
+            sampleElement.textContent?.substring(0, 100) || sampleElement.outerHTML.substring(0, 100) 
+            : undefined
+        };
+      }).filter(item => item.count > 0);
+      
+      // Analyze available links
+      const links = Array.from(document.querySelectorAll('a[href]')).slice(0, 20).map(link => {
+        const href = link.getAttribute('href') || '';
+        const text = link.textContent?.trim() || '';
+        
+        let linkType = 'internal';
+        if (href.startsWith('http') && !href.includes(window.location.hostname)) {
+          linkType = 'external';
+        } else if (href.startsWith('mailto:')) {
+          linkType = 'email';
+        } else if (href.startsWith('tel:')) {
+          linkType = 'phone';
+        }
+        
+        return {
+          text: text.substring(0, 50),
+          href: href.startsWith('http') ? href : new URL(href, window.location.href).href,
+          type: linkType
+        };
+      }).filter(link => link.text.length > 0);
+      
+      return {
+        title: document.title,
+        description: document.querySelector('meta[name="description"]')?.getAttribute('content') || '',
+        url: window.location.href,
+        availableElements,
+        availableLinks: links,
+        totalElements: document.querySelectorAll('*').length,
+        bodyTextLength: document.body.textContent?.length || 0
+      };
+    });
+    
+    // Update session
+    session.pageInfo = pageInfo;
+    session.step = 'analyzed';
+    scrapingSessions.set(sessionId, session);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            sessionId,
+            step: 'analyzed',
+            pageInfo,
+            message: 'Page analysis complete. You can now provide extraction instructions.',
+            nextAction: 'Call with action="extract" and provide instructions for what data to scrape',
+            examples: {
+              instructions: [
+                'Extract all company names and their websites',
+                'Get all product names, prices, and descriptions',
+                'Find all contact information including emails and phone numbers',
+                'Scrape all job listings with titles, companies, and locations',
+                'Extract all news article titles, dates, and summaries'
+              ],
+              linkSelectors: ['a[href*="/company"]', 'a[href*="/product"]', '.company-link'],
+              dataSelectors: ['.company-name', '.price', '.description', '.contact-info']
             }
-          } catch (error) {
-            console.warn(`Error processing element ${index}:`, error);
-          }
-        });
-          if (companies.length > 0) break;
-      }
-    }
+          }, null, 2)
+        }
+      ],
+      isError: false
+    };
+    
+  } catch (error) {
+    console.error(`[Interactive Scraper] Failed to analyze page:`, error);
+    throw error;
+  }
+}
 
-    return companies;
-  });
+// Step 3: Extract data based on user instructions
+async function extractWithInstructions(
+  sessionId: string, 
+  instructions: string,
+  linkSelectors?: string[],
+  dataSelectors?: string[]
+) {
+  const session = scrapingSessions.get(sessionId);
+  if (!session || !session.page) {
+    throw new Error('Invalid session ID or session not found');
+  }
+  
+  console.log(`[Interactive Scraper] Extracting data for session ${sessionId}`);
+  console.log(`[Interactive Scraper] Instructions: ${instructions}`);
+  
+  try {
+    // Perform intelligent scrolling first
+    await session.page.evaluate(async () => {
+      const scrollDelay = 1000;
+      const maxScrolls = 3;
+      let lastHeight = document.body.scrollHeight;
+      
+      for (let i = 0; i < maxScrolls; i++) {
+        window.scrollTo(0, document.body.scrollHeight);
+        await new Promise(resolve => setTimeout(resolve, scrollDelay));
+        
+        const newHeight = document.body.scrollHeight;
+        if (newHeight === lastHeight) break;
+        lastHeight = newHeight;
+      }
+      
+      window.scrollTo(0, 0);
+      await new Promise(resolve => setTimeout(resolve, 500));
+    });
+    
+    // Extract data based on instructions
+    const extractedData = await session.page.evaluate(
+      (instructions: string, linkSelectors?: string[], dataSelectors?: string[]) => {
+        console.log('Starting extraction with instructions:', instructions);
+        
+        const results: ExtractedItem[] = [];
+        
+        // Generate selectors based on instructions
+        const generateSelectors = (instruction: string) => {
+          const lowerInst = instruction.toLowerCase();
+          const selectors: string[] = [];
+          
+          // Company-related selectors
+          if (lowerInst.includes('company') || lowerInst.includes('business')) {
+            selectors.push(
+              '.company', '.company-name', '.business-name', '.organization',
+              '[class*="company"]', '[class*="business"]', '[data-testid*="company"]',
+              'h1, h2, h3', '.title', '.name', '.brand'
+            );
+          }
+          
+          // Product-related selectors
+          if (lowerInst.includes('product') || lowerInst.includes('item')) {
+            selectors.push(
+              '.product', '.product-name', '.item', '.item-name',
+              '[class*="product"]', '[class*="item"]', '.title', '.name'
+            );
+          }
+          
+          // Price-related selectors
+          if (lowerInst.includes('price') || lowerInst.includes('cost')) {
+            selectors.push(
+              '.price', '.cost', '.amount', '[class*="price"]', '[class*="cost"]',
+              '[data-testid*="price"]', '.currency'
+            );
+          }
+          
+          // Contact information selectors
+          if (lowerInst.includes('contact') || lowerInst.includes('email') || lowerInst.includes('phone')) {
+            selectors.push(
+              '.contact', '.email', '.phone', '.telephone', '[href^="mailto:"]', '[href^="tel:"]',
+              '[class*="contact"]', '[class*="email"]', '[class*="phone"]'
+            );
+          }
+          
+          // Job/career selectors
+          if (lowerInst.includes('job') || lowerInst.includes('career') || lowerInst.includes('position')) {
+            selectors.push(
+              '.job', '.position', '.role', '.career', '[class*="job"]', '[class*="position"]',
+              '.job-title', '.position-title'
+            );
+          }
+          
+          // News/article selectors
+          if (lowerInst.includes('news') || lowerInst.includes('article') || lowerInst.includes('blog')) {
+            selectors.push(
+              '.article', '.news', '.blog', '.post', '[class*="article"]', '[class*="news"]',
+              '.article-title', '.news-title', '.post-title'
+            );
+          }
+          
+          // Generic selectors
+          selectors.push(
+            '.card', '.item', '.listing', '.entry', '[class*="card"]', '[class*="item"]',
+            'article', 'section', '.container > div', '.grid > div'
+          );
+          
+          return [...new Set(selectors)]; // Remove duplicates
+        };
+        
+        // Use provided selectors or generate from instructions
+        const targetSelectors = dataSelectors && dataSelectors.length > 0 
+          ? dataSelectors 
+          : generateSelectors(instructions);
+        
+        console.log('Using selectors:', targetSelectors);
+        
+        // Extract data using selectors
+        for (const selector of targetSelectors) {
+          const elements = document.querySelectorAll(selector);
+          console.log(`Selector "${selector}": found ${elements.length} elements`);
+          
+          if (elements.length > 0) {
+            elements.forEach((element, index) => {
+              if (results.length >= 50) return; // Limit results
+              
+              try {
+                const extractedItem: ExtractedItem = {};
+                
+                // Extract primary text content
+                const primaryText = element.textContent?.trim();
+                if (primaryText && primaryText.length > 2) {
+                  extractedItem.text = primaryText.substring(0, 200);
+                }
+                
+                // Extract links
+                const linkEl = element.querySelector('a[href]') || (element.tagName === 'A' ? element : null);
+                if (linkEl) {
+                  const href = linkEl.getAttribute('href');
+                  if (href) {
+                    extractedItem.link = href.startsWith('http') ? href : new URL(href, window.location.href).href;
+                  }
+                }
+                
+                // Extract images
+                const imgEl = element.querySelector('img');
+                if (imgEl) {
+                  const src = imgEl.getAttribute('src') || imgEl.getAttribute('data-src');
+                  if (src) {
+                    extractedItem.image = src.startsWith('http') ? src : new URL(src, window.location.href).href;
+                  }
+                }
+                
+                // Extract specific data based on instructions
+                if (instructions.toLowerCase().includes('price')) {
+                  const priceText = element.textContent || '';
+                  const priceMatch = priceText.match(/[\$€£¥₹][\d,.]+(?: ?\w+)?|\d+[.,]\d+\s*[\$€£¥₹]/);
+                  if (priceMatch) {
+                    extractedItem.price = priceMatch[0];
+                  }
+                }
+                
+                if (instructions.toLowerCase().includes('email')) {
+                  const emailMatch = element.textContent?.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+                  if (emailMatch) {
+                    extractedItem.email = emailMatch[0];
+                  }
+                }
+                
+                if (instructions.toLowerCase().includes('phone')) {
+                  const phoneMatch = element.textContent?.match(/[\+]?[1-9]?[\d\s\-\(\)]{8,15}/);
+                  if (phoneMatch) {
+                    extractedItem.phone = phoneMatch[0].trim();
+                  }
+                }
+                
+                // Add metadata
+                extractedItem.metadata = {
+                  selector,
+                  tagName: element.tagName,
+                  className: element.className,
+                  index,
+                  timestamp: new Date().toISOString()
+                };
+                
+                if (Object.keys(extractedItem).length > 1) { // More than just metadata
+                  results.push(extractedItem);
+                }
+                
+              } catch (elementError) {
+                console.warn(`Error processing element ${index}:`, elementError);
+              }
+            });
+            
+            if (results.length > 0) break; // Found data, stop trying other selectors
+          }
+        }
+        
+        // If specific extraction didn't work, try general text extraction
+        if (results.length === 0) {
+          console.log('No specific data found, trying general extraction...');
+          
+          const generalElements = document.querySelectorAll('p, div, span, article, section');
+          const textResults: string[] = [];
+          
+          generalElements.forEach(el => {
+            const text = el.textContent?.trim();
+            if (text && text.length > 10 && text.length < 500) {
+              const lowerText = text.toLowerCase();
+              const instructionWords = instructions.toLowerCase().split(' ');
+              
+              // Check if text contains any instruction keywords
+              const hasKeyword = instructionWords.some(word => 
+                word.length > 3 && lowerText.includes(word)
+              );
+              
+              if (hasKeyword && !textResults.some(existing => existing.includes(text))) {
+                textResults.push(text);
+                if (textResults.length >= 10) return;
+              }
+            }
+          });
+          
+          textResults.forEach((text, index) => {
+            results.push({
+              text,
+              metadata: {
+                selector: 'general-text-extraction',
+                index,
+                extractionType: 'keyword-match'
+              }
+            });
+          });
+        }
+        
+        console.log(`Extraction complete. Found ${results.length} items.`);
+        return results;
+      },
+      instructions,
+      linkSelectors,
+      dataSelectors
+    );
+    
+    // Update session
+    session.results = {
+      success: true,
+      totalResults: extractedData.length,
+      extractedData: extractedData,
+      message: `Successfully extracted ${extractedData.length} items`,
+      stats: {
+        withLinks: extractedData.filter(item => item.link).length,
+        withImages: extractedData.filter(item => item.image).length,
+        withPrices: extractedData.filter(item => item.price).length,
+        withEmails: extractedData.filter(item => item.email).length,
+        withPhones: extractedData.filter(item => item.phone).length
+      }
+    };
+    session.step = 'completed';
+    scrapingSessions.set(sessionId, session);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            sessionId,
+            step: 'completed',
+            instructions,
+            totalFound: extractedData.length,
+            extractedData: extractedData.slice(0, 20), // Limit for response size
+            message: `Data extraction completed. Found ${extractedData.length} items based on your instructions.`,
+            summary: {
+              withLinks: extractedData.filter((item: ExtractedItem) => item.link).length,
+              withImages: extractedData.filter((item: ExtractedItem) => item.image).length,
+              withPrices: extractedData.filter((item: ExtractedItem) => item.price).length,
+              withEmails: extractedData.filter((item: ExtractedItem) => item.email).length,
+              withPhones: extractedData.filter((item: ExtractedItem) => item.phone).length
+            },
+            nextAction: 'Call with action="cleanup" to close the session, or modify instructions for re-extraction'
+          }, null, 2)
+        }
+      ],
+      isError: false
+    };
+    
+  } catch (error) {
+    console.error(`[Interactive Scraper] Failed to extract data:`, error);
+    throw error;
+  }
+}
+
+// Get session information
+async function getSessionInfo(sessionId: string) {
+  const session = scrapingSessions.get(sessionId);
+  if (!session) {
+    throw new Error('Session not found');
+  }
+  
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          success: true,
+          sessionId,
+          url: session.url,
+          step: session.step,
+          timestamp: session.timestamp,
+          hasResults: !!session.results,
+          resultCount: session.results?.extractedData?.length || 0,
+          pageInfo: session.pageInfo
+        }, null, 2)
+      }
+    ],
+    isError: false
+  };
+}
+
+// Cleanup session and close browser
+async function cleanupSession(sessionId: string) {
+  const session = scrapingSessions.get(sessionId);
+  if (!session) {
+    throw new Error('Session not found');
+  }
+  
+  try {
+    if (session.browser) {
+      await session.browser?.close();
+    }
+    scrapingSessions.delete(sessionId);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: `Session ${sessionId} cleaned up successfully`,
+            sessionId
+          }, null, 2)
+        }
+      ],
+      isError: false
+    };
+  } catch (error) {
+    console.error(`[Interactive Scraper] Failed to cleanup session:`, error);
+    scrapingSessions.delete(sessionId); // Force delete even if cleanup failed
+    throw error;
+  }
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<MCPResponse>> {
@@ -1599,7 +1507,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<MCPRespon
         break;
 
       case 'fetch_web_content':
-        result = await fetchWebContent(args);
+        // Using web search instead
+        result = await searchWeb(args);
         break;
 
       case 'chat_with_ai':
@@ -1607,18 +1516,26 @@ export async function POST(request: NextRequest): Promise<NextResponse<MCPRespon
         break;
 
       case 'analyze_file':
-        result = await analyzeFile(args);
+        // File analysis not implemented
+        result = { content: [{ type: 'text', text: JSON.stringify({ error: 'File analysis not implemented' }) }] };
         break;
 
       case 'manage_conversation':
-        result = await manageConversation(args);
-        break;      case 'intelligent_navigation':
-        // Use the same enhanced extraction function for intelligent navigation
-        result = await extractCompanyData(args);
+        // Conversation management not implemented
+        result = { content: [{ type: 'text', text: JSON.stringify({ error: 'Conversation management not implemented' }) }] };
+        break;
+        
+      case 'intelligent_navigation':
+        // Use the interactive scraper for intelligent navigation
+        result = await interactiveScraper(args);
+        break;
+        
+      case 'extract_company_data':
+        result = await interactiveScraper(args);
         break;
 
-      case 'extract_company_data':
-        result = await extractCompanyData(args);
+      case 'interactive_scraper':
+        result = await interactiveScraper(args);
         break;
 
       default:
