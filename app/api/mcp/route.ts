@@ -687,14 +687,18 @@ const scrapingSessions = new Map<string, ScrapingSession>();
 
 // Interactive Scraper Tool - Step-by-step workflow
 async function interactiveScraper(args: Record<string, unknown>) {
-  const { action, sessionId, url, instructions, linkSelectors, dataSelectors } = args;
+  const { action, sessionId, url, instructions, linkSelectors, dataSelectors, aiGuidance } = args;
   
   console.log(`[Interactive Scraper] Action: ${action}`);
   
   try {
     switch (action) {
       case 'start':
-        return await startScrapingSession(url as string);
+        return await startScrapingSession(
+          url as string, 
+          aiGuidance, 
+          instructions as string
+        );
       
       case 'analyze':
         return await analyzePageContent(sessionId as string);
@@ -737,7 +741,7 @@ async function interactiveScraper(args: Record<string, unknown>) {
 }
 
 // Step 1: Start scraping session and navigate to URL
-async function startScrapingSession(url: string) {
+async function startScrapingSession(url: string, aiGuidance?: unknown, instructions?: string) {
   if (!url || typeof url !== 'string') {
     throw new Error('URL is required and must be a string');
   }
@@ -758,7 +762,12 @@ async function startScrapingSession(url: string) {
   }
   
   const sessionId = `scrape_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  console.log(`[Interactive Scraper] Starting session ${sessionId} for ${validUrl}`);
+  console.log(`[Interactive Scraper] Starting AI-guided session ${sessionId} for ${validUrl}`);
+  
+  // Log AI guidance if provided
+  if (aiGuidance) {
+    console.log(`[Interactive Scraper] AI Guidance:`, aiGuidance);
+  }
   
   try {
     // Launch browser with enhanced anti-bot protection
@@ -853,32 +862,49 @@ async function startScrapingSession(url: string) {
       );
     });
     
-    // Multiple navigation strategies with enhanced fallbacks
+    // AI-guided navigation strategies
     let navigationSuccess = false;
     let lastError;
     let pageContent = '';
     
+    // Use AI guidance to determine optimal navigation strategy
+    const guidance = aiGuidance as { websiteType?: string; challenges?: string[]; strategy?: string } | null;
+    
     const strategies = [
       {
-        name: 'Standard Navigation with NetworkIdle',
-        options: { waitUntil: 'networkidle2' as const, timeout: 35000 },
+        name: 'AI-Optimized Navigation',
+        options: { 
+          waitUntil: guidance?.challenges?.includes('dynamic content') ? 'networkidle0' as const : 'networkidle2' as const, 
+          timeout: guidance?.challenges?.includes('slow loading') ? 45000 : 35000 
+        },
         postAction: async () => {
-          // Add random delay to mimic human behavior
-          await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 2000));
+          // AI-guided post-action based on website type
+          const delay = guidance?.websiteType === 'e-commerce' ? 3000 : 1500;
+          await new Promise(resolve => setTimeout(resolve, delay + Math.random() * 2000));
           
-          // Simulate mouse movement
+          // Simulate realistic user behavior
           await page.mouse.move(Math.random() * 100, Math.random() * 100);
           await page.mouse.move(Math.random() * 200, Math.random() * 200);
+          
+          // Special handling for different website types
+          if (guidance?.websiteType === 'social media' || guidance?.websiteType === 'news') {
+            // Scroll to load more content
+            await page.evaluate(() => {
+              window.scrollTo(0, document.body.scrollHeight / 3);
+            });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         }
       },
       {
-        name: 'DOM Content Loaded with Stealth',
+        name: 'Standard Navigation with AI Enhancements',
         options: { waitUntil: 'domcontentloaded' as const, timeout: 30000 },
         postAction: async () => {
-          // Wait longer for dynamic content
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          // Wait for dynamic content based on AI guidance
+          const waitTime = guidance?.challenges?.includes('ajax loading') ? 5000 : 2000;
+          await new Promise(resolve => setTimeout(resolve, waitTime));
           
-          // Try to scroll to trigger any lazy loading
+          // Try to scroll to trigger lazy loading
           await page.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight / 4);
           });
@@ -886,58 +912,72 @@ async function startScrapingSession(url: string) {
         }
       },
       {
-        name: 'Load Event with Interaction',
+        name: 'Load Event with AI-Guided Interaction',
         options: { waitUntil: 'load' as const, timeout: 25000 },
         postAction: async () => {
-          // Try to click somewhere safe to trigger any detection
+          // AI-guided interactions based on website type
           try {
-            await page.click('body');
+            if (guidance?.websiteType === 'directory' || guidance?.websiteType === 'listing') {
+              // Try to click "Load More" or similar buttons
+              const loadMoreSelectors = ['[data-testid*="load"]', '.load-more', '.show-more', '.pagination a'];
+              for (const selector of loadMoreSelectors) {
+                const element = await page.$(selector);
+                if (element) {
+                  await element.click();
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                  break;
+                }
+              }
+            } else {
+              // Default safe click
+              await page.click('body');
+            }
           } catch {
-            // Ignore click errors
+            // Ignore interaction errors
           }
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
       },
       {
-        name: 'Basic Navigation with Retry',
+        name: 'Fallback Navigation',
         options: { waitUntil: 'networkidle0' as const, timeout: 20000 },
         postAction: async () => {
-          // Minimal post-action
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
     ];
     
-    console.log(`[Interactive Scraper] Trying multiple navigation strategies for: ${validUrl}`);
+    console.log(`[Interactive Scraper] Using AI-guided navigation for ${guidance?.websiteType || 'unknown'} website`);
     
     for (const strategy of strategies) {
       try {
         console.log(`[Interactive Scraper] Attempting: ${strategy.name}`);
         
-        // Add a pre-navigation delay to avoid rapid requests
+        // Add a pre-navigation delay for subsequent attempts
         if (strategies.indexOf(strategy) > 0) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 3000));
         }
         
         await page.goto(validUrl, strategy.options);
         
-        // Execute post-action if defined
+        // Execute AI-guided post-action
         if (strategy.postAction) {
           await strategy.postAction();
         }
         
-        // Verify page loaded by checking for basic elements and content
+        // Verify page loaded successfully
         const pageTitle = await page.title();
         pageContent = await page.content();
         
-        // Check if we got meaningful content (not just an error page)
-        const hasContent = pageContent.length > 1000 && 
-                          !pageContent.includes('Access denied') &&
-                          !pageContent.includes('Blocked') &&
-                          !pageContent.includes('Please enable JavaScript') &&
-                          !pageContent.includes('bot detected');
+        // AI-guided content validation
+        const hasValidContent = pageContent.length > 1000 && 
+                               !pageContent.includes('Access denied') &&
+                               !pageContent.includes('Blocked') &&
+                               !pageContent.includes('Please enable JavaScript') &&
+                               !pageContent.includes('bot detected') &&
+                               !pageContent.includes('Cloudflare');
         
-        if (pageTitle && pageTitle.length > 0 && hasContent) {
+        if (pageTitle && pageTitle.length > 0 && hasValidContent) {
           console.log(`[Interactive Scraper] Success with ${strategy.name} - Page title: ${pageTitle}`);
           console.log(`[Interactive Scraper] Page content length: ${pageContent.length}`);
           navigationSuccess = true;
@@ -957,10 +997,10 @@ async function startScrapingSession(url: string) {
     }
     
     if (!navigationSuccess) {
-      console.error(`[Interactive Scraper] All navigation strategies failed for: ${validUrl}`);
+      console.error(`[Interactive Scraper] All AI-guided navigation strategies failed for: ${validUrl}`);
       await browser.close();
       
-      // Provide detailed error information
+      // Provide detailed error information with AI context
       const errorMessage = lastError instanceof Error ? lastError.message : 'Unknown error';
       
       // Check if this looks like anti-bot protection
@@ -969,35 +1009,40 @@ async function startScrapingSession(url: string) {
                         errorMessage.includes('Navigation timeout') ||
                         pageContent.includes('Access denied') ||
                         pageContent.includes('Blocked') ||
-                        pageContent.includes('bot detected');
+                        pageContent.includes('bot detected') ||
+                        pageContent.includes('Cloudflare');
       
       if (isAntiBot) {
+        const aiInsights = guidance?.challenges ? `\n\nAI Analysis: ${guidance.challenges.join(', ')}` : '';
         throw new Error(
-          `Navigation failed - This site appears to have anti-bot protection.\n\n` +
+          `AI-guided navigation failed - This site appears to have anti-bot protection.\n\n` +
           `Site: ${validUrl}\n` +
-          `Error: ${errorMessage}\n\n` +
-          `Recommendations:\n` +
-          `1. Try accessing the site manually first to check if it's accessible\n` +
-          `2. The site may require JavaScript, cookies, or human verification\n` +
-          `3. Consider using a different URL or testing with a simpler page\n` +
-          `4. Some sites block automated access entirely\n\n` +
-          `For VivaTechnology specifically, try:\n` +
-          `- https://vivatechnology.com/ (main page)\n` +
-          `- Wait for the site to load completely before scraping\n` +
-          `- The site may require manual interaction to proceed`
+          `Error: ${errorMessage}${aiInsights}\n\n` +
+          `AI Recommendations:\n` +
+          `1. The AI detected this as a ${guidance?.websiteType || 'complex'} website\n` +
+          `2. Try accessing the site manually first to verify accessibility\n` +
+          `3. The site may require JavaScript, cookies, or human verification\n` +
+          `4. Consider using a different URL or testing with a simpler page\n` +
+          `5. Some sites block automated access entirely\n\n` +
+          `AI Strategy Applied: ${guidance?.strategy || 'Standard navigation'}\n` +
+          `For better results, try:\n` +
+          `- Simpler pages from the same domain\n` +
+          `- Direct content URLs instead of landing pages\n` +
+          `- Sites with public APIs or RSS feeds`
         );
       } else {
-        throw new Error(`Failed to navigate to ${validUrl}. Error: ${errorMessage}`);
+        throw new Error(`AI-guided navigation failed for ${validUrl}. Error: ${errorMessage}`);
       }
     }
     
-    // Create session
+    // Create enhanced session with AI guidance
     const session: ScrapingSession = {
       sessionId,
       url: validUrl,
       step: 'initialized',
       browser,
       page,
+      instructions: instructions || '',
       timestamp: new Date().toISOString()
     };
     
@@ -1012,9 +1057,10 @@ async function startScrapingSession(url: string) {
             sessionId,
             url: validUrl,
             step: 'initialized',
-            message: 'Scraping session started successfully. Ready for page analysis.',
-            nextAction: 'Call with action="analyze" to analyze page content',
-            timestamp: session.timestamp
+            message: 'AI-guided scraping session started successfully. Ready for intelligent page analysis.',
+            nextAction: 'Call with action="analyze" to perform AI-enhanced page analysis',
+            timestamp: session.timestamp,
+            aiGuidance: guidance ? 'Applied' : 'Not provided'
           }, null, 2)
         }
       ],
@@ -1022,7 +1068,7 @@ async function startScrapingSession(url: string) {
     };
     
   } catch (error) {
-    console.error(`[Interactive Scraper] Failed to start session:`, error);
+    console.error(`[Interactive Scraper] Failed to start AI-guided session:`, error);
     throw error;
   }
 }

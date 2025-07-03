@@ -328,10 +328,74 @@ const ChatInterface: React.FC = () => {
     setThinkingSteps([]);
     setScrapingReportData(null);
     
-    // Extract query from content
-    let query = content.replace(/scrape system:\s*/i, '').replace(/@scrape\s*/i, '').trim();
-    if (!query) {
-      query = content.trim();
+    // Enhanced parsing for @scraper command
+    const scraperMatch = content.match(/@scraper\s*(.*)$/i);
+    let query = '';
+    let instructions = '';
+    
+    if (scraperMatch) {
+      const scraperContent = scraperMatch[1].trim();
+      
+      // Check if it's just @scraper without content - prompt for input
+      if (!scraperContent) {
+        const promptMessage: Message = {
+          id: generateId(),
+          role: 'assistant',
+          content: `## 🤖 AI-Powered Web Scraper Ready
+
+I'm ready to help you scrape any website with AI-guided intelligence! Please provide:
+
+### 📋 **Required Information:**
+1. **Website URL** - The page you want to scrape
+2. **Data Instructions** - What specific data you want to extract
+
+### 💡 **Example Format:**
+\`\`\`
+@scraper https://example.com/companies
+Extract company names, websites, descriptions, and contact information
+\`\`\`
+
+### 🎯 **What I Can Extract:**
+- **Company Data**: Names, websites, descriptions, employees, industry
+- **Contact Information**: Emails, phone numbers, addresses
+- **Product Data**: Names, prices, descriptions, specifications
+- **Job Listings**: Titles, companies, locations, salaries
+- **News Articles**: Headlines, dates, authors, content
+- **Any structured data** from web pages
+
+### 🧠 **AI-Enhanced Features:**
+- **Smart Navigation**: AI understands page structure and navigates intelligently
+- **Content Analysis**: LLM analyzes the page to find the best extraction strategy
+- **Anti-Bot Bypassing**: Advanced techniques to access protected content
+- **Dynamic Content**: Handles JavaScript-heavy sites and lazy loading
+- **Instruction Following**: Precisely extracts data based on your specific requirements
+
+Just type your URL and instructions, and I'll handle the rest!`,
+          timestamp: Date.now(),
+          mode: 'rag',
+        };
+        
+        setMessages(prev => [...prev, promptMessage]);
+        setLoading(false);
+        setScrapingMode(false);
+        return;
+      }
+      
+      // Parse URL and instructions from the content
+      const urlMatch = scraperContent.match(/https?:\/\/[^\s]+/i);
+      if (urlMatch) {
+        query = urlMatch[0];
+        instructions = scraperContent.replace(urlMatch[0], '').trim();
+      } else {
+        // No URL found, treat entire content as search query
+        query = scraperContent;
+      }
+    } else {
+      // Legacy parsing for backward compatibility
+      query = content.replace(/scrape system:\s*/i, '').replace(/@scrape\s*/i, '').trim();
+      if (!query) {
+        query = content.trim();
+      }
     }
     
     // Add user message
@@ -349,7 +413,7 @@ const ChatInterface: React.FC = () => {
     setSidebarCode({
       code: '',
       language: 'markdown',
-      fileName: `mcp-scraping-report-${Date.now()}.md`
+      fileName: `ai-scraper-report-${Date.now()}.md`
     });
     setShowCodeSidebar(true);
     
@@ -359,350 +423,117 @@ const ChatInterface: React.FC = () => {
       const urlMatch = query.match(urlPattern);
       
       if (urlMatch) {
-        // Direct URL scraping with MCP intelligent navigation
+        // AI-Enhanced Direct URL scraping
         const url = urlMatch[0];
-        console.log(`[MCP] Direct URL detected: ${url}`);
+        console.log(`[AI Scraper] Direct URL detected: ${url}`);
         
-        // Update thinking steps
+        // Step 1: AI Analysis Phase
         setThinkingSteps([
           {
-            id: 'mcp-navigation',
-            title: '🧠 MCP Intelligent Navigation',
-            description: `Analyzing ${url} with intelligent navigation and company extraction`,
+            id: 'ai-analysis',
+            title: '🧠 AI Content Analysis',
+            description: `Using OpenRouter LLM to analyze page structure and determine optimal scraping strategy for ${url}`,
             sources: [url],
             timestamp: Date.now(),
             status: 'in-progress'
           }
         ]);
         
-        // Use MCP intelligent navigation
-        const response = await fetch('/api/mcp', {
+        // Get AI analysis of the page first
+        const aiAnalysisResponse = await fetch('/api/mcp', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            tool: 'intelligent_navigation',
+            tool: 'chat_with_ai',
             args: {
-              url: url,
-              task: 'extract_companies',
-              maxResults: 50,
-              maxPages: 3
+              message: `You are an expert web scraper. I need to scrape data from this URL: ${url}
+              
+${instructions ? `User instructions: ${instructions}` : ''}
+
+Please analyze this URL and provide:
+1. What type of website this likely is (e.g., company directory, e-commerce, news site, etc.)
+2. What data structures are likely to be present
+3. Recommended scraping approach and selectors
+4. Any potential challenges (anti-bot protection, dynamic content, etc.)
+5. Best extraction strategy for the requested data
+
+Format your response as a JSON object with keys: websiteType, dataStructures, selectors, challenges, strategy`,
+              system_prompt: "You are a professional web scraping expert. Analyze URLs and provide detailed technical guidance for data extraction. Always respond with practical, actionable advice."
             }
           })
         });
         
-        const mcpResult = await response.json();
+        const aiAnalysisResult = await aiAnalysisResponse.json();
+        let aiGuidance = null;
         
-        if (mcpResult.success && mcpResult.data?.content?.[0]?.text) {
-          const navigationData = JSON.parse(mcpResult.data.content[0].text);
-          
-          // Update thinking steps
-          setThinkingSteps(prev => prev.map(step => 
-            step.id === 'mcp-navigation' 
-              ? { ...step, status: 'completed', data: navigationData }
-              : step
-          ));
-          
-          if (navigationData.success && navigationData.companies && navigationData.companies.length > 0) {
-            // Create structured report
-            const reportData: ScrapingReportData = {
-              query: query,
-              timestamp: new Date().toISOString(),
-              summary: {
-                totalSources: 1,
-                successfulExtractions: navigationData.companies.length,
-                totalWords: navigationData.companies.reduce((acc: number, c: { description?: string }) => 
-                  acc + (c.description?.split(' ').length || 0), 0),
-                mode: 'MCP Intelligent Navigation'
-              },
-              sources: [{
-                url: url,
-                title: `VivaTech Partners (${navigationData.companies.length} companies)`,
-                wordCount: navigationData.companies.reduce((acc: number, c: { description?: string }) => 
-                  acc + (c.description?.split(' ').length || 0), 0),
-                description: `Extracted ${navigationData.companies.length} companies using ${navigationData.method}`,
-                author: 'MCP System',
-                publishDate: new Date().toISOString()
-              }],
-              analysis: {
-                companies: navigationData.companies,
-                extractionMethod: navigationData.method,
-                totalFound: navigationData.totalFound,
-                pagesVisited: navigationData.pagesVisited || 1
-              }
-            };
-            
-            setScrapingReportData(reportData);
-            
-            // Create detailed company list for the response
-            const companyList = navigationData.companies.map((company: {
-              name: string;
-              website: string;
-              description: string;
-              employees?: string;
-              industry?: string;
-            }, index: number) => {
-              return `${index + 1}. **${company.name}**
-   - Website: ${company.website || 'Not specified'}
-   - Description: ${company.description?.substring(0, 200) || 'No description available'}${company.description && company.description.length > 200 ? '...' : ''}
-   - Employees: ${company.employees || 'Not specified'}
-   - Industry: ${company.industry || 'Not specified'}`;
-            }).join('\n\n');
-            
-            // Create AI response message
-            const assistantMessage: Message = {
-              id: generateId(),
-              role: 'assistant',
-              content: `## 🧠 MCP Intelligent Scraping Complete
-
-I've successfully extracted company data from: "${url}" using advanced MCP (Model Context Protocol) navigation.
-
-### 📊 Extraction Summary
-- **Companies Found**: ${navigationData.companies.length}
-- **Extraction Method**: ${navigationData.method}
-- **Pages Analyzed**: ${navigationData.pagesVisited || 1}
-- **Total Data Points**: ${navigationData.companies.length * 4} (name, website, description, industry)
-
-### 🏢 Companies Extracted
-
-${companyList}
-
-### 🔧 Technical Details
-- **MCP Navigation**: ✅ Successfully used intelligent browser navigation
-- **Data Quality**: High-quality structured extraction
-- **Anti-Bot Protection**: Successfully bypassed using MCP techniques
-- **Real-time Processing**: Dynamic content loading and parsing
-
-### 💡 Insights
-- **Healthcare & Wellness Focus**: ${navigationData.companies.filter((c: { industry?: string }) => 
-  c.industry?.toLowerCase().includes('health') || c.industry?.toLowerCase().includes('wellness')).length} companies in target sector
-- **Website Availability**: ${navigationData.companies.filter((c: { website: string }) => c.website && c.website.length > 0).length}/${navigationData.companies.length} companies have websites
-- **Detailed Descriptions**: ${navigationData.companies.filter((c: { description: string }) => c.description && c.description.length > 50).length}/${navigationData.companies.length} companies have detailed descriptions
-
-The complete extraction process and raw data are available in the **MCP Process** sidebar. This advanced system allows the AI to intelligently navigate, select, copy, and collect data from complex web pages.`,
-              timestamp: Date.now(),                sources: [{
-                  title: `VivaTech Partners - ${navigationData.companies.length} Companies`,
-                  url: url,
-                  snippet: `Successfully extracted ${navigationData.companies.length} companies using ${navigationData.method}`
-                }]
-            };
-            
-            setMessages(prev => [...prev, assistantMessage]);
-              } else {
-            // Instead of throwing an error, try fallback scraping
-            console.log('MCP navigation found no companies, trying fallback methods...');
-            
-            // Update thinking steps to show fallback attempt
-            setThinkingSteps(prev => prev.map(step => 
-              step.id === 'mcp-navigation' 
-                ? { ...step, status: 'completed', data: { 
-                    companiesFound: 0, 
-                    message: 'No companies found via MCP, trying fallback methods...' 
-                  }}
-                : step
-            ));
-            
-            // Add fallback step
-            setThinkingSteps(prev => [...prev, {
-              id: 'fallback-scraping',
-              title: '🔄 Fallback Scraping',
-              description: 'Trying traditional scraping methods...',
-              sources: [url],
-              timestamp: Date.now(),
-              status: 'in-progress'
-            }]);
-            
-            // Try regular scraping API as fallback
-            try {
-              const fallbackResponse = await fetch('/api/scraping', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  query: url,
-                  mode: 'quick-scraping',
-                  maxSources: 5,
-                  includeAnalysis: true
-                })
-              });
-              
-              if (fallbackResponse.ok) {
-                const fallbackResult = await fallbackResponse.json();
-                
-                if (fallbackResult.success && fallbackResult.companies && fallbackResult.companies.length > 0) {
-                  // Update thinking steps
-                  setThinkingSteps(prev => prev.map(step => 
-                    step.id === 'fallback-scraping' 
-                      ? { ...step, status: 'completed', data: { 
-                          companiesFound: fallbackResult.companies.length,
-                          method: 'Fallback Scraping'
-                        }}
-                      : step
-                  ));
-                  
-                  // Create success message with fallback data
-                  const companyList = fallbackResult.companies.map((company: {
-                    name: string;
-                    website: string;
-                    description: string;
-                    employees?: string;
-                    industry?: string;
-                  }, index: number) => {
-                    return `${index + 1}. **${company.name}**
-   - Website: ${company.website || 'Not specified'}
-   - Description: ${company.description?.substring(0, 200) || 'No description available'}${company.description && company.description.length > 200 ? '...' : ''}
-   - Employees: ${company.employees || 'Not specified'}
-   - Industry: ${company.industry || 'Not specified'}`;
-                  }).join('\n\n');
-                  
-                  const assistantMessage: Message = {
-                    id: generateId(),
-                    role: 'assistant',
-                    content: `## 🔄 Fallback Scraping Success
-
-While the advanced MCP navigation didn't find structured company data, I successfully extracted information using traditional scraping methods.
-
-### 📊 Extraction Results
-- **Total Companies Found**: ${fallbackResult.companies.length}
-- **Extraction Method**: Fallback Scraping (Puppeteer + Cheerio)
-- **Target URL**: ${url}
-
-### 🏢 Company Directory
-
-${companyList}
-
-### 📈 Data Quality Metrics
-- **Website Availability**: ${fallbackResult.companies.filter((c: { website: string }) => c.website && c.website.length > 0).length}/${fallbackResult.companies.length} companies have websites
-- **Detailed Descriptions**: ${fallbackResult.companies.filter((c: { description: string }) => c.description && c.description.length > 50).length}/${fallbackResult.companies.length} companies have detailed descriptions
-
-*Note: MCP navigation didn't detect the expected structure, but traditional scraping methods were successful. This suggests the site may use non-standard layouts or have additional protections.*`,
-                    timestamp: Date.now(),
-                    sources: [{
-                      title: `Fallback Scraping - ${fallbackResult.companies.length} Companies`,
-                      url: url,
-                      snippet: `Successfully extracted ${fallbackResult.companies.length} companies using fallback methods`
-                    }]
-                  };
-                  
-                  setMessages(prev => [...prev, assistantMessage]);
-                  return; // Exit successfully
-                }
-              }
-              
-              // If fallback also fails, show final error
-              setThinkingSteps(prev => prev.map(step => 
-                step.id === 'fallback-scraping' 
-                  ? { ...step, status: 'error', data: { error: 'Fallback scraping also failed' }}
-                  : step
-              ));
-              
-              throw new Error('Both MCP navigation and fallback scraping failed to find companies. The site might have strong anti-scraping protections or an unusual structure.');
-              
-            } catch (fallbackError) {
-              console.error('Fallback scraping failed:', fallbackError);
-              setThinkingSteps(prev => prev.map(step => 
-                step.id === 'fallback-scraping' 
-                  ? { ...step, status: 'error', data: { error: fallbackError instanceof Error ? fallbackError.message : 'Unknown error' }}
-                  : step
-              ));
-              
-              throw new Error('All scraping methods failed. The site might have strong anti-scraping protections.');
+        if (aiAnalysisResult.success && aiAnalysisResult.data?.content?.[0]?.text) {
+          try {
+            // Try to parse AI response as JSON, fallback to plain text
+            const aiText = aiAnalysisResult.data.content[0].text;
+            aiGuidance = aiText.includes('{') ? JSON.parse(aiText.match(/\{[\s\S]*\}/)?.[0] || '{}') : { strategy: aiText };
+          } catch {
+            aiGuidance = { strategy: aiAnalysisResult.data.content[0].text };
+          }
+        }
+        
+        // Update thinking steps with AI analysis
+        setThinkingSteps(prev => prev.map(step => 
+          step.id === 'ai-analysis' 
+            ? { ...step, status: 'completed', data: aiGuidance }
+            : step
+        ));
+        
+        // Step 2: AI-Guided Scraping
+        setThinkingSteps(prev => [...prev, {
+          id: 'ai-guided-scraping',
+          title: '🚀 AI-Guided Data Extraction',
+          description: `Executing AI-optimized scraping strategy for ${url}`,
+          sources: [url],
+          timestamp: Date.now(),
+          status: 'in-progress'
+        }]);
+        
+        // Enhanced scraping with AI guidance
+        const scrapingResponse = await fetch('/api/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tool: 'interactive_scraper',
+            args: {
+              action: 'start',
+              url: url,
+              aiGuidance: aiGuidance,
+              instructions: instructions || 'Extract all relevant data from this page'
             }
+          })
+        });
+        
+        const scrapingResult = await scrapingResponse.json();
+        
+        if (scrapingResult.success && scrapingResult.data?.content?.[0]?.text) {
+          const sessionData = JSON.parse(scrapingResult.data.content[0].text);
+          
+          if (sessionData.success && sessionData.sessionId) {
+            // Continue with AI-guided workflow
+            await executeAIGuidedScraping(sessionData.sessionId, url, instructions, aiGuidance);
+          } else {
+            throw new Error('Failed to start scraping session. The URL might be inaccessible.');
           }
         } else {
-          throw new Error('MCP navigation failed. Falling back to standard scraping...');
+          throw new Error('Initial scraping setup failed. Please check the URL and try again.');
         }
         
       } else {
-        // Search-based scraping using MCP multi-search
-        console.log(`[MCP] Search-based scraping for: ${query}`);
-        
-        // Update thinking steps
-        setThinkingSteps([
-          {
-            id: 'mcp-search',
-            title: '🔍 MCP Multi-Provider Search',
-            description: `Searching for: "${query}" across multiple sources`,
-            sources: ['SearXNG', 'Fetch-MCP', 'SerpAPI'],
-            timestamp: Date.now(),
-            status: 'in-progress'
-          }
-        ]);
-        
-        // Use MCP multi-search
-        const response = await fetch('/api/mcp', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            tool: 'multi_search',
-            args: {
-              provider: 'fetch-mcp',
-              query: query,
-              apiKeys: {} // Les clés API seront récupérées côté serveur
-            }
-          })
-        });
-        
-        const searchResult = await response.json();
-        
-        if (searchResult.success && searchResult.data) {
-          // Update thinking steps
-          setThinkingSteps(prev => prev.map(step => 
-            step.id === 'mcp-search' 
-              ? { ...step, status: 'completed', data: searchResult.data }
-              : step
-          ));
-          
-          // Create response based on search results
-          const results = searchResult.data.results || [];
-          
-          const assistantMessage: Message = {
-            id: generateId(),
-            role: 'assistant',
-            content: `## 🔍 MCP Search Results
-
-I've found ${results.length} relevant results for: "${query}"
-
-### � Search Summary
-- **Provider Used**: ${searchResult.data.provider || 'MCP Fetch'}
-- **Results Found**: ${results.length}
-- **Search Success**: ✅ ${searchResult.data.success ? 'Successful' : 'Partial'}
-
-### 🌐 Top Results
-
-${results.slice(0, 10).map((result: { title: string; url: string; snippet: string; position: number }, index: number) => {
-  return `${index + 1}. **[${result.title}](${result.url})**
-   ${result.snippet}
-   Position: #${result.position || index + 1}`;
-}).join('\n\n')}
-
-### 💡 Next Steps
-To extract detailed company information from any of these sources, use:
-\`Scrape system: [URL]\` followed by the specific URL you want to analyze.
-
-The MCP system can intelligently navigate these pages to extract structured data including company names, websites, employee counts, and descriptions.`,
-            timestamp: Date.now(),
-            sources: results.slice(0, 5).map((result: { title: string; url: string; snippet: string }) => ({
-              title: result.title,
-              link: result.url,
-              url: result.url,
-              snippet: result.snippet
-            }))
-          };
-          
-          setMessages(prev => [...prev, assistantMessage]);
-          
-        } else {
-          throw new Error('MCP search failed. Please try a different query or check your connection.');
-        }
+        // Search-based scraping using AI-enhanced search
+        await executeAIGuidedSearch(query);
       }
       
     } catch (error) {
-      console.error('MCP Scraping error:', error);
+      console.error('AI Scraping error:', error);
       
       // Update thinking steps to show error
       setThinkingSteps(prev => prev.map(step => ({
@@ -714,39 +545,412 @@ The MCP system can intelligently navigate these pages to extract structured data
       const errorMessage: Message = {
         id: generateId(),
         role: 'assistant',
-        content: `❌ **MCP Scraping Error**
+        content: `❌ **AI Scraping Error**
 
-I encountered an error while performing the MCP-enhanced scraping analysis:
+I encountered an error while performing the AI-enhanced scraping analysis:
 
 ${error instanceof Error ? error.message : 'Unknown error occurred'}
 
-### 🔧 MCP System Capabilities
-The new MCP (Model Context Protocol) system enables:
+### 🔧 AI Scraper System Capabilities
+The new AI-powered scraper system enables:
 - **Intelligent Navigation**: AI can browse, select, and extract data from complex pages
 - **Dynamic Content Loading**: Handles JavaScript-heavy sites and dynamic content
 - **Anti-Bot Bypassing**: Advanced techniques to work with protected sites
-- **Structured Data Extraction**: Specifically designed for company directories
+- **Structured Data Extraction**: Specifically designed for various data types
 
 ### 💡 **Tips for Better Results:**
-- For direct URLs: Use \`Scrape system: https://example.com\`
-- For searches: Use \`Scrape system: companies in healthcare Paris\`
-- The system now uses advanced MCP navigation to intelligently collect data
-- MCP allows the AI to actually "see" and interact with web pages like a human
+- For direct URLs: Use \`@scraper https://example.com extract company data\`
+- For searches: Use \`@scraper companies in healthcare Paris\`
+- The system now uses advanced AI navigation to intelligently collect data
+- AI allows the system to actually "see" and interact with web pages like a human
 
 ### 🚀 **Enhanced Features:**
 - Real-time page navigation and content selection
 - Intelligent link following and data collection
 - Dynamic content extraction (AJAX, React, Vue.js sites)
-- Structured output formatting for company data
+- Structured output formatting for any data type
 
-Please try again with a different query or URL. The MCP system is designed to handle complex scraping scenarios that traditional methods cannot.`,
+Please try again with a different query or URL. The AI system is designed to handle complex scraping scenarios that traditional methods cannot.`,
         timestamp: Date.now(),
       };
       
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setLoading(false);
+      setScrapingMode(false);
     }
+  };
+
+  // Helper function for AI-guided scraping workflow
+  const executeAIGuidedScraping = async (sessionId: string, url: string, instructions: string, aiGuidance: unknown) => {
+    // Step 3: AI Page Analysis
+    setThinkingSteps(prev => [...prev, {
+      id: 'page-analysis',
+      title: '📊 AI Page Structure Analysis',
+      description: `AI analyzing page elements and content structure`,
+      sources: [url],
+      timestamp: Date.now(),
+      status: 'in-progress'
+    }]);
+    
+    const analysisResponse = await fetch('/api/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tool: 'interactive_scraper',
+        args: {
+          action: 'analyze',
+          sessionId: sessionId
+        }
+      })
+    });
+    
+    const analysisResult = await analysisResponse.json();
+    
+    if (analysisResult.success && analysisResult.data?.content?.[0]?.text) {
+      const pageInfo = JSON.parse(analysisResult.data.content[0].text);
+      
+      setThinkingSteps(prev => prev.map(step => 
+        step.id === 'page-analysis' 
+          ? { ...step, status: 'completed', data: pageInfo }
+          : step
+      ));
+      
+      // Step 4: AI-Optimized Extraction
+      setThinkingSteps(prev => [...prev, {
+        id: 'ai-extraction',
+        title: '⚡ AI-Optimized Data Extraction',
+        description: `Using AI to intelligently extract data based on page analysis`,
+        sources: [url],
+        timestamp: Date.now(),
+        status: 'in-progress'
+      }]);
+      
+      // Generate AI-optimized extraction instructions
+      const extractionPrompt = `Based on the page analysis, extract data from this page:
+      
+Page Info: ${JSON.stringify(pageInfo.pageInfo, null, 2)}
+User Instructions: ${instructions || 'Extract all relevant data'}
+AI Guidance: ${JSON.stringify(aiGuidance, null, 2)}
+
+Please provide specific extraction instructions that will capture the most relevant data.`;
+      
+      const extractionInstructionsResponse = await fetch('/api/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool: 'chat_with_ai',
+          args: {
+            message: extractionPrompt,
+            system_prompt: "You are an expert data extraction specialist. Generate clear, specific instructions for extracting data from web pages based on the page structure analysis."
+          }
+        })
+      });
+      
+      let finalInstructions = instructions || 'Extract all relevant data from this page';
+      if (extractionInstructionsResponse.ok) {
+        const instructionsResult = await extractionInstructionsResponse.json();
+        if (instructionsResult.success && instructionsResult.data?.content?.[0]?.text) {
+          finalInstructions = instructionsResult.data.content[0].text;
+        }
+      }
+      
+      // Perform the actual extraction with AI-optimized instructions
+      const extractionResponse = await fetch('/api/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool: 'interactive_scraper',
+          args: {
+            action: 'extract',
+            sessionId: sessionId,
+            instructions: finalInstructions
+          }
+        })
+      });
+      
+      const extractionResult = await extractionResponse.json();
+      
+      if (extractionResult.success && extractionResult.data?.content?.[0]?.text) {
+        const extractedData = JSON.parse(extractionResult.data.content[0].text);
+        
+        setThinkingSteps(prev => prev.map(step => 
+          step.id === 'ai-extraction' 
+            ? { ...step, status: 'completed', data: extractedData }
+            : step
+        ));
+        
+        // Cleanup session
+        await fetch('/api/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tool: 'interactive_scraper',
+            args: {
+              action: 'cleanup',
+              sessionId: sessionId
+            }
+          })
+        });
+        
+        if (extractedData.success && extractedData.extractedData && extractedData.extractedData.length > 0) {
+          // Create successful AI scraping response
+          await createAIScrapingResponse(url, extractedData, pageInfo, aiGuidance);
+        } else {
+          throw new Error('AI-guided extraction found no data. The page might be empty or have strong protections.');
+        }
+      } else {
+        throw new Error('AI-guided extraction failed. Please try a different approach.');
+      }
+    } else {
+      throw new Error('Page analysis failed. Cannot proceed with extraction.');
+    }
+  };
+
+  // Helper function for AI-guided search
+  const executeAIGuidedSearch = async (query: string) => {
+    console.log(`[AI Search] Search-based scraping for: ${query}`);
+    
+    // Update thinking steps
+    setThinkingSteps([
+      {
+        id: 'ai-search',
+        title: '🔍 AI-Enhanced Multi-Provider Search',
+        description: `AI analyzing search intent and finding optimal sources for: "${query}"`,
+        sources: ['SearXNG', 'Fetch-MCP', 'SerpAPI'],
+        timestamp: Date.now(),
+        status: 'in-progress'
+      }
+    ]);
+    
+    // Use AI to enhance search strategy
+    const searchStrategyResponse = await fetch('/api/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tool: 'chat_with_ai',
+        args: {
+          message: `I need to search for: "${query}". Please provide the best search strategy including:
+1. Optimal keywords to use
+2. What type of sources to prioritize
+3. What data I should expect to find
+4. Best search provider to use (SearXNG, SerpAPI, or Fetch-MCP)
+
+Format as JSON with keys: keywords, sourceTypes, expectedData, provider`,
+          system_prompt: "You are an expert search strategist. Analyze search queries and provide optimal search approaches."
+        }
+      })
+    });
+    
+    let searchStrategy = { keywords: query, provider: 'fetch-mcp' };
+    if (searchStrategyResponse.ok) {
+      const strategyResult = await searchStrategyResponse.json();
+      if (strategyResult.success && strategyResult.data?.content?.[0]?.text) {
+        try {
+          const strategyText = strategyResult.data.content[0].text;
+          searchStrategy = JSON.parse(strategyText.match(/\{[\s\S]*\}/)?.[0] || '{}');
+        } catch {
+          // Use default strategy if parsing fails
+        }
+      }
+    }
+    
+    // Execute search with AI-optimized strategy
+    const searchResponse = await fetch('/api/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tool: 'multi_search',
+        args: {
+          provider: searchStrategy.provider || 'fetch-mcp',
+          query: searchStrategy.keywords || query,
+          apiKeys: {}
+        }
+      })
+    });
+    
+    const searchResult = await searchResponse.json();
+    
+    if (searchResult.success && searchResult.data) {
+      setThinkingSteps(prev => prev.map(step => 
+        step.id === 'ai-search' 
+          ? { ...step, status: 'completed', data: searchResult.data }
+          : step
+      ));
+      
+      const results = searchResult.data.results || [];
+      
+      const assistantMessage: Message = {
+        id: generateId(),
+        role: 'assistant',
+        content: `## 🔍 AI-Enhanced Search Results
+
+I've found ${results.length} relevant results for: "${query}" using AI-optimized search strategy.
+
+### 🧠 AI Search Analysis
+- **Search Strategy**: ${JSON.stringify(searchStrategy, null, 2)}
+- **Provider Used**: ${searchResult.data.provider || 'AI-Enhanced Fetch-MCP'}
+- **Results Found**: ${results.length}
+- **Search Success**: ✅ ${searchResult.data.success ? 'Successful' : 'Partial'}
+
+### 🌐 Top Results
+
+${results.slice(0, 10).map((result: { title: string; url: string; snippet: string; position: number }, index: number) => {
+  return `${index + 1}. **[${result.title}](${result.url})**
+   ${result.snippet}
+   Position: #${result.position || index + 1}`;
+}).join('\n\n')}
+
+### 💡 Next Steps - AI-Powered Extraction
+To extract detailed data from any of these sources, simply use:
+\`@scraper [URL] [specific extraction instructions]\`
+
+Example:
+\`@scraper ${results[0]?.url || 'https://example.com'} extract company names, descriptions, and contact info\`
+
+The AI system will:
+1. **Analyze** the page structure intelligently
+2. **Navigate** through dynamic content
+3. **Extract** precisely the data you need
+4. **Format** results in a structured way`,
+        timestamp: Date.now(),
+        sources: results.slice(0, 5).map((result: { title: string; url: string; snippet: string }) => ({
+          title: result.title,
+          link: result.url,
+          url: result.url,
+          snippet: result.snippet
+        }))
+      };
+      
+      setMessages(prev => [...prev, assistantMessage]);
+    } else {
+      throw new Error('AI-enhanced search failed. Please try a different query or check your connection.');
+    }
+  };
+
+  // Helper function to create AI scraping response
+  const createAIScrapingResponse = async (url: string, extractedData: unknown, pageInfo: unknown, aiGuidance: unknown) => {
+    const data = extractedData as { extractedData: Array<{ text?: string; link?: string; image?: string; price?: string; email?: string; phone?: string; [key: string]: unknown }>, summary?: { withLinks?: number; withImages?: number; withPrices?: number; withEmails?: number; withPhones?: number } };
+    const page = pageInfo as { pageInfo?: { title?: string; totalElements?: number; bodyTextLength?: number; availableLinks?: unknown[] } };
+    
+    // Create structured report
+    const reportData: ScrapingReportData = {
+      query: url,
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalSources: 1,
+        successfulExtractions: data.extractedData.length,
+        totalWords: data.extractedData.reduce((acc: number, item: { text?: string }) => 
+          acc + (item.text?.split(' ').length || 0), 0),
+        mode: 'AI-Enhanced Interactive Scraper'
+      },
+      sources: [{
+        url: url,
+        title: page.pageInfo?.title || 'Scraped Page',
+        wordCount: data.extractedData.reduce((acc: number, item: { text?: string }) => 
+          acc + (item.text?.split(' ').length || 0), 0),
+        description: `AI-extracted ${data.extractedData.length} items using intelligent analysis`,
+        author: 'AI Scraper',
+        publishDate: new Date().toISOString()
+      }],
+      analysis: {
+        aiGuidance: aiGuidance,
+        pageInfo: page.pageInfo,
+        extractedData: data.extractedData,
+        extractionMethod: 'AI-Guided Interactive Scraper'
+      }
+    };
+    
+    setScrapingReportData(reportData);
+    
+    // Create detailed response
+    const itemsList = data.extractedData.slice(0, 20).map((item, index) => {
+      let itemText = `${index + 1}. `;
+      if (item.text) {
+        itemText += `**${item.text.substring(0, 100)}${item.text.length > 100 ? '...' : ''}**`;
+      }
+      if (item.link) {
+        itemText += `\n   - Link: ${item.link}`;
+      }
+      if (item.image) {
+        itemText += `\n   - Image: ${item.image}`;
+      }
+      if (item.price) {
+        itemText += `\n   - Price: ${item.price}`;
+      }
+      if (item.email) {
+        itemText += `\n   - Email: ${item.email}`;
+      }
+      if (item.phone) {
+        itemText += `\n   - Phone: ${item.phone}`;
+      }
+      return itemText;
+    }).join('\n\n');
+    
+    const guidanceData = aiGuidance as { websiteType?: string; strategy?: string } | null;
+    
+    // Create AI response message
+    const assistantMessage: Message = {
+      id: generateId(),
+      role: 'assistant',
+      content: `## 🤖 AI-Enhanced Web Scraping Complete
+
+I've successfully analyzed and extracted data from: "${url}" using advanced AI-guided scraping techniques.
+
+### 🧠 AI Analysis Results
+- **Website Type**: ${guidanceData?.websiteType || 'Detected automatically'}
+- **Scraping Strategy**: ${guidanceData?.strategy || 'AI-optimized extraction'}
+- **Data Points Found**: ${data.extractedData.length}
+- **Extraction Method**: AI-Guided Interactive Scraper
+
+### 📊 Extraction Summary
+- **Total Items**: ${data.extractedData.length}
+- **Items with Links**: ${data.summary?.withLinks || 0}
+- **Items with Images**: ${data.summary?.withImages || 0}
+- **Items with Prices**: ${data.summary?.withPrices || 0}
+- **Items with Emails**: ${data.summary?.withEmails || 0}
+- **Items with Phones**: ${data.summary?.withPhones || 0}
+
+### 🎯 Extracted Data
+
+${itemsList}
+
+${data.extractedData.length > 20 ? `\n*... and ${data.extractedData.length - 20} more items. See the complete report in the sidebar.*` : ''}
+
+### 🚀 AI-Enhanced Features Used
+- **Intelligent Page Analysis**: AI analyzed page structure for optimal extraction
+- **Dynamic Strategy Selection**: AI chose the best approach based on content type
+- **Smart Element Detection**: AI identified relevant data patterns automatically
+- **Contextual Extraction**: AI understood the meaning behind different page elements
+
+### 💡 Technical Insights
+- **Page Elements Analyzed**: ${page.pageInfo?.totalElements || 'N/A'}
+- **Content Length**: ${page.pageInfo?.bodyTextLength || 'N/A'} characters
+- **Available Link Types**: ${page.pageInfo?.availableLinks?.length || 0} different link patterns
+- **AI Guidance Quality**: ${aiGuidance ? 'High-quality strategic analysis' : 'Basic extraction'}
+
+The complete extraction process, AI analysis, and raw data are available in the **AI Scraper Report** sidebar. This system combines the power of large language models with advanced web scraping for intelligent, context-aware data extraction.`,
+      timestamp: Date.now(),
+      sources: [{
+        title: `AI-Scraped Data - ${data.extractedData.length} Items`,
+        url: url,
+        snippet: `Successfully extracted ${data.extractedData.length} items using AI-guided analysis`
+      }]
+    };
+    
+    setMessages(prev => [...prev, assistantMessage]);
   };
 
   const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null) => {
@@ -754,8 +958,13 @@ Please try again with a different query or URL. The MCP system is designed to ha
     
     // Check if this is a scraping request
     const isScrapingRequest = content.toLowerCase().includes('scrape system:') || 
+                              content.toLowerCase().includes('@scraper') ||
                               content.toLowerCase().includes('@scrape') ||
-                              (selectedRAGProvider === 'fetch-mcp' && content.toLowerCase().includes('analyse'));
+                              (selectedRAGProvider === 'fetch-mcp' && (
+                                content.toLowerCase().includes('analyse') ||
+                                content.toLowerCase().includes('extract') ||
+                                content.toLowerCase().includes('scrape')
+                              ));
     
     if (isScrapingRequest) {
       return handleScrapingRequest(content);

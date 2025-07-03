@@ -76,11 +76,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
   };
   
   // Handle menu item selection
-  const handleScrapeSystemSelect = () => {
-    // Replace "@" with "Scrape system: " in the message
+  const handleScrapingSystemSelect = () => {
+    // Replace "@" with "@scraper " in the message and add helpful template
     const beforeAt = message.substring(0, lastAtIndex);
     const afterAt = message.substring(lastAtIndex + 1);
-    const newMessage = beforeAt + "Scrape system: " + afterAt;
+    const newMessage = beforeAt + "@scraper " + afterAt;
     
     setMessage(newMessage);
     setShowAtMenu(false);
@@ -100,6 +100,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
     // Focus back to textarea
     if (textareaRef.current) {
       textareaRef.current.focus();
+      // Position cursor at the end
+      setTimeout(() => {
+        if (textareaRef.current) {
+          const newPos = beforeAt.length + 9; // Length of "@scraper "
+          textareaRef.current.setSelectionRange(newPos, newPos);
+        }
+      }, 0);
     }
   };
   
@@ -364,7 +371,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         >
           <div className="p-1">
             <button
-              onClick={handleScrapeSystemSelect}
+              onClick={handleScrapingSystemSelect}
               className={`w-full text-left px-3 py-2 rounded-md transition-all duration-200 flex items-center gap-2 hover:scale-[1.02]
                 ${theme === 'dark'
                   ? 'hover:bg-blue-900/40 text-gray-200 hover:text-blue-300'
@@ -383,9 +390,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 </svg>
               </div>
               <div className="flex-1">
-                <div className="font-medium">Scrape system</div>
+                <div className="font-medium">🤖 @scraper</div>
                 <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Web scraping with Fetch MCP
+                  AI-powered intelligent web scraping
                 </div>
               </div>
               <div className={`text-xs px-2 py-0.5 rounded-full
