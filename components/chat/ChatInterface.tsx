@@ -231,6 +231,7 @@ const ChatInterface: React.FC = () => {
     } catch (error) {
       console.error('Erreur lors du chargement des conversations:', error);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   // Sauvegarde les conversations dans le stockage local lorsqu'elles changent

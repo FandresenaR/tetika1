@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiCopy, FiCheck, FiDownload } from 'react-icons/fi';
+import { FiCopy, FiCheck } from 'react-icons/fi';
 
 interface TableRendererProps {
   content: string;
@@ -78,27 +78,10 @@ function tableToTSV(headers: string[], rows: string[][]): string {
 }
 
 /**
- * Convertit un tableau en format CSV
- */
-function tableToCSV(headers: string[], rows: string[][]): string {
-  const escape = (str: string) => {
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
-  };
-  
-  const csvHeaders = headers.map(escape).join(',');
-  const csvRows = rows.map(row => row.map(escape).join(',')).join('\n');
-  return `${csvHeaders}\n${csvRows}`;
-}
-
-/**
  * Composant pour afficher un tableau Markdown avec style et bouton copier
  */
 export const TableRenderer: React.FC<TableRendererProps> = ({ content, theme = 'dark' }) => {
   const [copied, setCopied] = useState(false);
-  const [downloadFormat, setDownloadFormat] = useState<'tsv' | 'csv'>('tsv');
   
   const tableData = parseMarkdownTable(content);
   
@@ -130,23 +113,6 @@ export const TableRenderer: React.FC<TableRendererProps> = ({ content, theme = '
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  };
-  
-  // Télécharger le tableau
-  const handleDownload = () => {
-    const data = downloadFormat === 'tsv' 
-      ? tableToTSV(headers, rows) 
-      : tableToCSV(headers, rows);
-    
-    const blob = new Blob([data], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `table.${downloadFormat}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
   
   const isDark = theme === 'dark';
@@ -187,20 +153,6 @@ export const TableRenderer: React.FC<TableRendererProps> = ({ content, theme = '
                 <span>Copier</span>
               </>
             )}
-          </button>
-          
-          {/* Bouton Télécharger */}
-          <button
-            onClick={handleDownload}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              isDark
-                ? 'bg-cyan-900/50 text-cyan-300 hover:bg-cyan-800/50 border border-cyan-700/50'
-                : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 border border-cyan-300'
-            }`}
-            title={`Télécharger (${downloadFormat.toUpperCase()})`}
-          >
-            <FiDownload size={14} />
-            <span>{downloadFormat.toUpperCase()}</span>
           </button>
         </div>
       </div>
@@ -254,7 +206,7 @@ export const TableRenderer: React.FC<TableRendererProps> = ({ content, theme = '
       
       {/* Footer avec info */}
       <div className={`px-4 py-2 text-xs ${isDark ? 'text-gray-500 bg-gray-800/40' : 'text-gray-500 bg-gray-50'} border-t ${isDark ? 'border-gray-700/50' : 'border-gray-200'}`}>
-        💡 Cliquez sur "Copier" puis collez dans Excel ou Google Sheets
+        💡 Cliquez sur &quot;Copier&quot; puis collez dans Excel ou Google Sheets
       </div>
     </div>
   );

@@ -7,7 +7,9 @@
 // 1. UTILISATION BASIQUE AVEC LE HOOK REACT
 // ============================================================================
 
+import { useState, useEffect } from 'react';
 import { useOpenRouterModels } from '@/lib/hooks/useOpenRouterModels';
+import type { AIModel } from '@/types';
 
 function ModelList() {
   const { models, isLoading, error } = useOpenRouterModels();
@@ -103,7 +105,7 @@ function AdminPanel() {
 // 4. SÉLECTEUR DE MODÈLE
 // ============================================================================
 
-function ModelSelector({ onChange }) {
+function ModelSelector({ onChange }: { onChange: (modelId: string) => void }) {
   const { models, isLoading, getProviders } = useOpenRouterModels();
   const [selectedProvider, setSelectedProvider] = useState('all');
   
@@ -182,8 +184,8 @@ async function serverSideUsage() {
 // ============================================================================
 
 function ChatWithAutoSync() {
-  const { models, filterModels } = useOpenRouterModels();
-  const [selectedModel, setSelectedModel] = useState(null);
+  const { models, filterModels, refreshModels } = useOpenRouterModels();
+  const [selectedModel, setSelectedModel] = useState<any>(null);
   
   // Synchronisation automatique toutes les 6 heures
   useEffect(() => {
@@ -193,14 +195,14 @@ function ChatWithAutoSync() {
     }, 6 * 60 * 60 * 1000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshModels]);
   
   // Sélectionner automatiquement le premier modèle
   useEffect(() => {
     if (models.length > 0 && !selectedModel) {
       setSelectedModel(models[0]);
     }
-  }, [models]);
+  }, [models, selectedModel]);
   
   // Filtrer pour n'afficher que les modèles recommandés
   const recommendedModels = filterModels({
@@ -210,7 +212,7 @@ function ChatWithAutoSync() {
   return (
     <div>
       <h3>Modèles recommandés</h3>
-      <select onChange={e => setSelectedModel(models.find(m => m.id === e.target.value))}>
+      <select onChange={e => setSelectedModel(models.find(m => m.id === e.target.value) || null)}>
         {recommendedModels.map(model => (
           <option key={model.id} value={model.id}>
             {model.name}
@@ -221,7 +223,7 @@ function ChatWithAutoSync() {
       {selectedModel && (
         <div>
           <p>Contexte: {selectedModel.contextLength.toLocaleString()} tokens</p>
-          <p>Vision: {selectedModel.features.vision ? 'Oui' : 'Non'}</p>
+          <p>Streaming: {selectedModel.features?.streaming ? 'Oui' : 'Non'}</p>
         </div>
       )}
     </div>
@@ -235,7 +237,7 @@ function ChatWithAutoSync() {
 import { ModelSyncPanel } from '@/components/admin/ModelSyncPanel';
 
 function SettingsPage() {
-  const handleModelsUpdated = (count) => {
+  const handleModelsUpdated = (count: number) => {
     console.log(`${count} modèles mis à jour`);
     // Afficher une notification, etc.
   };

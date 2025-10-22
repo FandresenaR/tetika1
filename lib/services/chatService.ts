@@ -1,4 +1,4 @@
-import { Message, ChatMode } from '@/types';
+import type { ChatMode } from '@/types';
 
 interface ChatAPIResponse {
   message: string;

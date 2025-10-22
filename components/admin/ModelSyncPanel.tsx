@@ -63,7 +63,7 @@ export function ModelSyncPanel({ onModelsUpdated, className = '' }: ModelSyncPan
             Modèles Gratuits OpenRouter
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Synchronisation automatique depuis l'API OpenRouter
+            Synchronisation automatique depuis l&apos;API OpenRouter
           </p>
         </div>
         

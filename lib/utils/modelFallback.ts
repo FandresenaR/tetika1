@@ -2,16 +2,6 @@
  * Utilitaire pour suggérer des modèles alternatifs en cas d'erreur
  */
 
-interface Model {
-  id: string;
-  name: string;
-  provider: string;
-  features?: {
-    free?: boolean;
-    rateLimitFriendly?: boolean;
-  };
-}
-
 /**
  * Suggère des modèles alternatifs gratuits qui sont moins susceptibles d'être rate-limités
  */

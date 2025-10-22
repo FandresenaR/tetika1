@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
  * POST /api/models/sync
  * Déclenche une synchronisation forcée des modèles
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     console.log('[Models Sync API] Force sync requested');
 
