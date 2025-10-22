@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FiSettings, FiX, FiCheck, FiEye, FiEyeOff, FiSearch, FiInfo } from 'react-icons/fi';
+import { FiSettings, FiX, FiCheck, FiEye, FiEyeOff, FiSearch, FiInfo, FiRefreshCw, FiDatabase } from 'react-icons/fi';
 import { RAG_PROVIDERS, DEFAULT_RAG_PROVIDER } from '@/lib/rag-providers';
+import { useOpenRouterModels } from '@/lib/hooks/useOpenRouterModels';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -18,9 +19,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [serpApiKey, setSerpApiKey] = useState<ApiKeyInfo>({ key: '', status: 'unknown' });
   const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
   const [showNotDiamondKey, setShowNotDiamondKey] = useState(false);  const [showSerpApiKey, setShowSerpApiKey] = useState(false);
-  const [activeTab, setActiveTab] = useState<'account' | 'api' | 'rag'>('api');
+  const [activeTab, setActiveTab] = useState<'account' | 'api' | 'rag' | 'models'>('api');
   const [selectedRAGProvider, setSelectedRAGProvider] = useState<string>(DEFAULT_RAG_PROVIDER);
   const [ragApiKeys, setRagApiKeys] = useState<Record<string, string>>({});
+  
+  // Hook pour la synchronisation des modèles
+  const {
+    models,
+    isLoading: isLoadingModels,
+    error: modelsError,
+    lastSync,
+    stats,
+    refreshModels,
+    getProviders,
+  } = useOpenRouterModels();
 
   useEffect(() => {
     if (isOpen) {
@@ -124,24 +136,31 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        <div className="flex mb-6 border-b border-gray-800">
+        <div className="flex mb-6 border-b border-gray-800 overflow-x-auto">
           <button
-            className={`px-4 py-2 ${activeTab === 'account' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}
+            className={`px-4 py-2 whitespace-nowrap ${activeTab === 'account' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}
             onClick={() => setActiveTab('account')}
           >
             Compte
           </button>          <button
-            className={`px-4 py-2 ${activeTab === 'api' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}
+            className={`px-4 py-2 whitespace-nowrap ${activeTab === 'api' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}
             onClick={() => setActiveTab('api')}
           >
             Clés API
           </button>
           <button
-            className={`px-4 py-2 ${activeTab === 'rag' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}
+            className={`px-4 py-2 whitespace-nowrap ${activeTab === 'rag' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}
             onClick={() => setActiveTab('rag')}
           >
             <FiSearch className="inline-block mr-1" />
             Recherche Web
+          </button>
+          <button
+            className={`px-4 py-2 whitespace-nowrap ${activeTab === 'models' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}
+            onClick={() => setActiveTab('models')}
+          >
+            <FiDatabase className="inline-block mr-1" />
+            Modèles
           </button>
         </div>
 
@@ -390,6 +409,149 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                     </p>
                     <p className="text-sm text-green-300 bg-green-900/20 rounded px-2 py-1">
                       💡 <strong>Fetch MCP</strong> est recommandé pour commencer : gratuit, rapide et sans configuration !
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'models' && (
+          <div className="space-y-6">
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <FiDatabase className="text-cyan-400 mr-2" />
+                  <h3 className="font-medium text-white">Modèles Gratuits OpenRouter</h3>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await refreshModels();
+                      
+                      // Déclencher un événement pour notifier les autres composants
+                      window.dispatchEvent(new CustomEvent('models-synced', { 
+                        detail: { 
+                          count: models.length,
+                          timestamp: new Date().toISOString()
+                        } 
+                      }));
+                      
+                      // Notification visuelle temporaire
+                      const button = document.activeElement as HTMLButtonElement;
+                      if (button) {
+                        const originalText = button.innerHTML;
+                        button.innerHTML = '<svg class="inline-block" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> <span>Synchronisé!</span>';
+                        setTimeout(() => {
+                          button.innerHTML = originalText;
+                        }, 2000);
+                      }
+                    } catch (err) {
+                      console.error('Erreur de synchronisation:', err);
+                    }
+                  }}
+                  disabled={isLoadingModels}
+                  className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-md transition-colors text-sm"
+                  title="Actualiser la liste des modèles"
+                >
+                  <FiRefreshCw className={isLoadingModels ? 'animate-spin' : ''} size={16} />
+                  <span>{isLoadingModels ? 'Synchronisation...' : 'Actualiser'}</span>
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-400 mb-4">
+                Synchronisez automatiquement la liste des modèles gratuits disponibles depuis OpenRouter.
+              </p>
+
+              {/* Erreur */}
+              {modelsError && (
+                <div className="bg-red-900/30 border border-red-600/30 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-red-200">
+                    ❌ Erreur: {modelsError}
+                  </p>
+                </div>
+              )}
+
+              {/* Statistiques */}
+              {stats && !isLoadingModels && (
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="bg-gray-700 rounded-lg p-3">
+                    <p className="text-xs text-gray-400">Total</p>
+                    <p className="text-2xl font-bold text-cyan-400">{stats.total}</p>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-3">
+                    <p className="text-xs text-gray-400">Providers</p>
+                    <p className="text-2xl font-bold text-cyan-400">
+                      {Object.keys(stats.byProvider).length}
+                    </p>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-3">
+                    <p className="text-xs text-gray-400">Avec Vision</p>
+                    <p className="text-2xl font-bold text-cyan-400">{stats.withVision}</p>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-3">
+                    <p className="text-xs text-gray-400">Contexte Max</p>
+                    <p className="text-2xl font-bold text-cyan-400">
+                      {(stats.maxContextLength / 1000).toFixed(0)}k
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* État de synchronisation */}
+              <div className="flex items-center justify-between text-sm text-gray-400 mb-4">
+                <span>
+                  Dernière synchro: {
+                    lastSync 
+                      ? (() => {
+                          const now = new Date();
+                          const diffMs = now.getTime() - lastSync.getTime();
+                          const diffMins = Math.floor(diffMs / 60000);
+                          const diffHours = Math.floor(diffMs / 3600000);
+                          
+                          if (diffMins < 1) return 'À l\'instant';
+                          if (diffMins < 60) return `Il y a ${diffMins} min`;
+                          if (diffHours < 24) return `Il y a ${diffHours}h`;
+                          return lastSync.toLocaleDateString('fr-FR');
+                        })()
+                      : 'Jamais'
+                  }
+                </span>
+                <span className="text-cyan-400 font-medium">{models.length} modèles</span>
+              </div>
+
+              {/* Providers */}
+              {!isLoadingModels && getProviders().length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-gray-300 mb-2">
+                    Providers disponibles:
+                  </p>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                    {getProviders().map(provider => {
+                      const count = stats?.byProvider[provider] || 0;
+                      return (
+                        <span
+                          key={provider}
+                          className="px-3 py-1 bg-cyan-900/30 text-cyan-300 rounded-full text-xs font-medium border border-cyan-700/30"
+                        >
+                          {provider} ({count})
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Info */}
+              <div className="bg-blue-900/30 border border-blue-600/30 rounded-lg p-3 mt-4">
+                <div className="flex items-start">
+                  <FiInfo className="text-blue-400 mr-2 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-blue-200">
+                    <p className="font-medium mb-1">Mise à jour automatique</p>
+                    <p className="text-blue-300">
+                      La liste est mise en cache pendant 1 heure. Cliquez sur &quot;Actualiser&quot; 
+                      pour forcer une synchronisation immédiate depuis l&apos;API OpenRouter.
                     </p>
                   </div>
                 </div>

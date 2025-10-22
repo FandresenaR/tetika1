@@ -5,6 +5,134 @@ Tous les changements notables apportés au projet Tetika seront documentés dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-10-22
+
+### 🔄 Système de Synchronisation Automatique des Modèles OpenRouter
+
+#### Ajouté
+
+- **Onglet "Modèles" dans les paramètres** (`components/ui/SettingsModal.tsx`)
+  - Interface intégrée pour synchroniser les modèles gratuits
+  - Bouton "Actualiser" avec animation de chargement
+  - Statistiques en temps réel (total, providers, vision, contexte max)
+  - Affichage de la dernière synchronisation (format relatif)
+  - Liste des providers disponibles avec compteurs
+  - Notification visuelle de succès après synchronisation
+  - Événement personnalisé `models-synced` pour intégration
+  - Gestion d'erreur avec affichage explicite
+
+- **Service de synchronisation** (`lib/services/openRouterSync.ts`)
+  - `fetchOpenRouterModels()` - Récupère tous les modèles depuis l'API OpenRouter
+  - `filterFreeModels()` - Filtre les modèles gratuits (pricing = 0)
+  - `convertToAppModel()` - Convertit au format de l'application
+  - `sortModelsByQuality()` - Trie par providers connus et context length
+  - `getCachedFreeModels()` - Récupération avec cache (1 heure)
+  - Cache multi-niveaux (mémoire + localStorage)
+  - Expiration automatique après 24h pour localStorage
+
+- **Hook React** (`lib/hooks/useOpenRouterModels.ts`)
+  - État complet: models, isLoading, error, lastSync, stats
+  - `refreshModels()` - Force un refresh des modèles
+  - `filterModels()` - Filtrage avancé par provider, vision, contexte, recherche
+  - `getProviders()` - Liste des providers uniques
+  - Chargement automatique au montage
+  - Support localStorage avec fallback
+
+- **API Route** (`app/api/models/sync/route.ts`)
+  - GET `/api/models/sync` - Récupère les modèles gratuits
+  - POST `/api/models/sync` - Force une synchronisation
+  - Query params: `refresh`, `includeStats`
+  - Statistiques détaillées par provider
+  - Gestion d'erreur robuste
+
+- **Composant UI** (`components/admin/ModelSyncPanel.tsx`)
+  - Interface de gestion de la synchronisation
+  - Affichage des statistiques (total, providers, vision, contexte max)
+  - Bouton d'actualisation avec loading state
+  - Liste des providers avec compteurs
+  - Formatage du temps de dernière synchro
+  - Gestion des erreurs avec affichage
+
+- **Script CLI** (`sync-openrouter-models.mjs`)
+  - Synchronisation en ligne de commande
+  - Options: `--stats`, `--save`, `--output`
+  - Affichage des top 10 modèles
+  - Statistiques détaillées par provider
+  - Sauvegarde JSON des résultats
+  - Indicateurs visuels (émojis, tableaux)
+
+- **Documentation** (`OPENROUTER-SYNC-SYSTEM.md`)
+  - Architecture complète du système
+  - Guide d'utilisation de chaque composant
+  - Exemples de code
+  - Guide d'intégration
+  - Métriques et monitoring
+
+#### Fonctionnalités
+
+- ✅ **Récupération automatique** depuis l'API OpenRouter publique
+- ✅ **Filtrage intelligent** des modèles gratuits (pricing = 0)
+- ✅ **Tri par qualité** (providers connus, context length)
+- ✅ **Cache multi-niveaux** (mémoire 1h, localStorage 24h)
+- ✅ **Statistiques en temps réel** (total, providers, vision, contexte)
+- ✅ **Filtrage avancé** (provider, vision, contexte min, recherche)
+- ✅ **Synchronisation manuelle** ou automatique
+- ✅ **Gestion d'erreur** avec fallback graceful
+- ✅ **Interface d'administration** complète
+- ✅ **Script CLI** pour automatisation
+
+#### Format des Données
+
+**Modèles convertis**:
+```typescript
+{
+  id: "google/gemini-flash-1.5",
+  name: "Gemini 1.5 Flash",
+  provider: "openrouter",
+  contextLength: 1000000,
+  isFree: true,
+  features: {
+    rag: true,
+    vision: true,
+    streaming: true
+  }
+}
+```
+
+#### Utilisation
+
+**React Hook**:
+```tsx
+const { models, isLoading, refreshModels, filterModels } = useOpenRouterModels();
+const visionModels = filterModels({ hasVision: true });
+```
+
+**API**:
+```bash
+curl http://localhost:3000/api/models/sync?includeStats=true
+```
+
+**CLI**:
+```bash
+node sync-openrouter-models.mjs --stats --save
+```
+
+#### Performance
+
+- Cache mémoire: < 10ms
+- localStorage: < 50ms  
+- API OpenRouter: 500-2000ms
+- Fallback graceful en cas d'erreur
+
+#### Avantages
+
+- 📊 Liste toujours à jour des modèles gratuits
+- 🚀 Performance optimale avec cache multi-niveaux
+- 🎯 Filtrage et tri intelligents
+- 💪 Robuste avec fallback et gestion d'erreur
+- 🔧 Facile à intégrer (hook, API, CLI)
+- 📈 Statistiques en temps réel
+
 ## [0.4.2] - 2025-10-22
 
 ### 🚨 Amélioration de la Gestion des Erreurs de Rate Limit
