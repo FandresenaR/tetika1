@@ -484,13 +484,14 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       model: modelId,
       messages: cleanMessages,
       temperature: 0.7,
-      max_tokens: 800,
+      max_tokens: 2000, // Augmenté de 800 à 2000 pour éviter les réponses tronquées
       stream: stream
     };      // Logging du payload pour le diagnostic (sans imprimer toute la conversation)
     console.log('OpenRouter payload structure:', { 
       model: payload.model,
       messageCount: payload.messages.length,
       firstMessageRole: payload.messages[0].role,
+      lastMessagePreview: payload.messages[payload.messages.length - 1].content.substring(0, 100),
       temperature: payload.temperature,
       max_tokens: payload.max_tokens
     });
@@ -648,6 +649,14 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
       dataKeys: response.data ? Object.keys(response.data) : [],
       responseContentType: response.headers['content-type'],
     });
+    
+    // CRITICAL DEBUG: Log the actual message content from the API
+    if (response.data?.choices?.[0]?.message?.content !== undefined) {
+      const rawContent = response.data.choices[0].message.content;
+      console.log('[OpenRouter] Raw message.content from API:', JSON.stringify(rawContent));
+      console.log('[OpenRouter] Raw content length:', String(rawContent).length);
+      console.log('[OpenRouter] Raw content type:', typeof rawContent);
+    }
       // Enhanced validation for response data
     if (!response.data) {
       console.error('OpenRouter returned empty response');
@@ -863,7 +872,55 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
         errorMessage = `Accès refusé: Vérifiez votre clé API et vos permissions`;
       } else if (axiosError.response.status === 404) {
         errorMessage = `Modèle "${modelId}" non trouvé ou non disponible`;      } else if (axiosError.response.status === 429) {
-        errorMessage = `Limite de requêtes atteinte. Veuillez réessayer plus tard`;
+        // Gestion améliorée des erreurs de rate limit
+        const errorData = axiosError.response.data as { 
+          error?: { 
+            message?: string;
+            metadata?: { 
+              raw?: string;
+              provider_name?: string;
+            };
+          };
+          rawData?: string;
+        };
+        
+        let rateLimitMessage = 'Limite de requêtes atteinte.';
+        let suggestion = '';
+        
+        // Extraire les détails de l'erreur
+        let rawError = errorData?.error?.metadata?.raw || errorData?.error?.message || '';
+        
+        // Si les données sont dans rawData, les parser
+        if (!rawError && errorData?.rawData) {
+          try {
+            const parsedData = JSON.parse(errorData.rawData);
+            rawError = parsedData?.error?.metadata?.raw || parsedData?.error?.message || '';
+          } catch (e) {
+            console.error('Failed to parse rawData:', e);
+          }
+        }
+        
+        console.log('[Rate Limit] Raw error:', rawError);
+        
+        // Détecter si c'est un rate limit upstream (du provider) ou d'OpenRouter
+        if (rawError.includes('temporarily rate-limited upstream')) {
+          // Le modèle gratuit est rate-limité chez le provider
+          rateLimitMessage = `Le modèle "${modelId}" a atteint sa limite de requêtes gratuites.`;
+          suggestion = '\n\n💡 Solutions possibles:\n' +
+                      '1. Attendez quelques minutes et réessayez\n' +
+                      '2. Essayez un autre modèle gratuit\n' +
+                      '3. Ajoutez votre propre clé API OpenRouter pour augmenter vos limites: https://openrouter.ai/settings/integrations';
+        } else if (rawError.includes('rate limit') || rawError.includes('rate-limit')) {
+          // Rate limit général
+          rateLimitMessage = 'Trop de requêtes envoyées. Limite de débit atteinte.';
+          suggestion = '\n\n💡 Veuillez patienter quelques instants avant de réessayer.';
+        } else {
+          // Rate limit sans détails spécifiques
+          rateLimitMessage = 'Limite de requêtes atteinte.';
+          suggestion = '\n\n💡 Attendez un moment avant de réessayer ou essayez un autre modèle.';
+        }
+        
+        errorMessage = rateLimitMessage + suggestion;
       } else {
         errorMessage = `Erreur ${axiosError.response.status}: ${(axiosError.response.data as Record<string, { message?: string }>)?.error?.message || axiosError.response.statusText}`;
       }

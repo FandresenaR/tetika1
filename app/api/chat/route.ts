@@ -4,6 +4,7 @@ import { callAIModel } from '@/lib/api';
 import { enhanceWithRAG } from '@/lib/rag-helper';
 import { enhanceWithMultiProviderRAG } from '@/lib/multi-provider-rag';
 import { extractMistralResponse, extractFromTruncatedResponse } from '@/lib/llm-utils';
+import { cleanAITokens } from '@/lib/utils/aiTokenCleaner';
 
 interface Source {
   title: string;
@@ -321,112 +322,180 @@ ${ragContext}`,
       // Extract the AI response content more safely
     let aiResponse = "";
     try {
-      if (apiResponse?.choices?.[0]?.message?.content) {
-        // Standard OpenRouter/OpenAI format
-        aiResponse = apiResponse.choices[0].message.content;
-      } else if (apiResponse?.choices?.[0]?.delta?.content) {
-        // Format used in some streaming responses
-        aiResponse = apiResponse.choices[0].delta.content;
-      } else if (apiResponse?.choices?.[0]?.text) {
-        // Some APIs might use 'text' instead of 'message.content'
-        aiResponse = apiResponse.choices[0].text;      } else if (apiResponse?.message?.content) {
-        // Alternative format some providers might use
-        aiResponse = apiResponse.message.content;
-      } else if (apiResponse?.content) {
-        // Simplest fallback
-        aiResponse = apiResponse.content;
-      } else if (typeof apiResponse === 'string') {
-        // For providers that might just return a string
-        aiResponse = apiResponse;      } else {
-        // Try to extract any text we can find in the response
+      // Fonction helper pour extraire le contenu de manière robuste
+      const extractContent = (response: unknown): string => {
+        if (!response) {
+          console.error('[extractContent] Response is null or undefined');
+          return '';
+        }
+        
+        console.log('[extractContent] Response type:', typeof response);
+        
+        // Type guard et extraction selon la structure
+        if (typeof response === 'string') {
+          console.log('[extractContent] Direct string response, length:', response.length);
+          return response;
+        }
+        
+        if (typeof response === 'object') {
+          const resp = response as Record<string, unknown>;
+          
+          // Format standard OpenRouter/OpenAI
+          if (resp.choices && Array.isArray(resp.choices) && resp.choices.length > 0) {
+            const choice = resp.choices[0] as Record<string, unknown>;
+            console.log('[extractContent] Found choices array, choice keys:', Object.keys(choice));
+            
+            // Essayer message.content
+            if (choice.message && typeof choice.message === 'object') {
+              const message = choice.message as Record<string, unknown>;
+              if (typeof message.content === 'string') {
+                console.log('[extractContent] Extracted from message.content, length:', message.content.length);
+                return message.content;
+              }
+            }
+            
+            // Essayer delta.content (streaming)
+            if (choice.delta && typeof choice.delta === 'object') {
+              const delta = choice.delta as Record<string, unknown>;
+              if (typeof delta.content === 'string') {
+                console.log('[extractContent] Extracted from delta.content, length:', delta.content.length);
+                return delta.content;
+              }
+            }
+            
+            // Essayer text directement
+            if (typeof choice.text === 'string') {
+              console.log('[extractContent] Extracted from choice.text, length:', choice.text.length);
+              return choice.text;
+            }
+          }
+          
+          // Format alternatif message.content
+          if (resp.message && typeof resp.message === 'object') {
+            const message = resp.message as Record<string, unknown>;
+            if (typeof message.content === 'string') {
+              console.log('[extractContent] Extracted from resp.message.content, length:', message.content.length);
+              return message.content;
+            }
+          }
+          
+          // Format simple content
+          if (typeof resp.content === 'string') {
+            console.log('[extractContent] Extracted from resp.content, length:', resp.content.length);
+            return resp.content;
+          }
+          
+          console.warn('[extractContent] No content found in object response. Keys:', Object.keys(resp).slice(0, 10));
+        }
+        
+        console.warn('[extractContent] Could not extract content, returning empty string');
+        return '';
+      };
+      
+      // Essayer d'extraire le contenu
+      aiResponse = extractContent(apiResponse);
+      
+      // Log du contenu extrait avant nettoyage
+      console.log('[API Route] Raw extracted content:', JSON.stringify(aiResponse));
+      console.log('[API Route] Raw extracted length:', aiResponse.length);
+      
+      // Si on n'a toujours pas de contenu, essayer les extracteurs spécialisés
+      if (!aiResponse || aiResponse.trim() === '') {
+        console.warn('Standard extraction failed, trying specialized extractors');
+        
         let responseStr = '';
         try {
-          responseStr = JSON.stringify(apiResponse);
+          responseStr = typeof apiResponse === 'string' ? apiResponse : JSON.stringify(apiResponse);
         } catch (jsonError) {
           console.error("Failed to stringify API response:", jsonError);
           responseStr = String(apiResponse);
         }
         
-        // Only log as warning - not an error since our handling can recover
-        if (process.env.NODE_ENV === 'development') {
-          // In development, show detailed info
-          console.log("Response format different than expected:", responseStr.substring(0, 200));
-        } else {
-          // In production, just note it happened without showing details
-          console.log("Alternative response format detected, attempting to extract content");
-        }
-        
-        // Special handling for Mistral models which often have truncated responses
+        // Essayer l'extracteur Mistral
         if (model.id.includes('mistral')) {
           const mistralContent = extractMistralResponse(responseStr);
           if (mistralContent) {
-            aiResponse = mistralContent;
-            console.log("Successfully extracted content from Mistral model using helper function");
+            console.log("Successfully extracted content from Mistral model");
             return NextResponse.json({
-              message: aiResponse,
+              message: mistralContent,
               sources: currentMode === 'rag' ? sources : [],
               autoActivatedRAG: autoActivatedRAG
             });
           }
         }
         
-        // If we still don't have content, try the generic extractor
+        // Essayer l'extracteur générique
         const extractedContent = extractFromTruncatedResponse(responseStr);
         if (extractedContent) {
-          aiResponse = extractedContent;
           console.log("Successfully extracted content using generic extractor");
           return NextResponse.json({
-            message: aiResponse,
+            message: extractedContent,
             sources: currentMode === 'rag' ? sources : [],
             autoActivatedRAG: autoActivatedRAG
           });
         }
-          // Fall back to original extraction method if helpers failed
-        // Try to extract the message from a potentially truncated response
-        // First, try to match any content in a standard format
-        const contentMatch = responseStr.match(/"content"\s*:\s*"([^"]+)"/);
-        const textMatch = responseStr.match(/"text"\s*:\s*"([^"]+)"/);
         
-        // Check for finish_reason which often comes right after the message content
-        // This is especially relevant for deepseek-r1t-chimera model responses
-        const finishReasonMatch = responseStr.match(/"finish_reason"\s*:\s*"(\w+)"/);
-        const messageBeforeFinishReason = finishReasonMatch ? 
-          responseStr.split('"finish_reason"')[0] : '';
-        
-        const deepseekMatch = messageBeforeFinishReason.match(/"delta"\s*:\s*{[^}]*"content"\s*:\s*"([^"]+)"/);
-        
-        if (contentMatch?.[1]) {
-          aiResponse = contentMatch[1];
-          console.log("Salvaged content from partial response");
-        } else if (textMatch?.[1]) {
-          aiResponse = textMatch[1];
-          console.log("Salvaged text from partial response");
-        } else if (deepseekMatch?.[1]) {
-          aiResponse = deepseekMatch[1];
-          console.log("Salvaged content from DeepSeek model partial response");
-        } else {
-          // For deepseek-r1t-chimera model, try to extract message from any JSON structure
-          try {
-            // Try to extract message from potentially truncated JSON
-            const partialJson = responseStr.replace(/\}\s*$/, '}');
-            const parsedPartial = JSON.parse(partialJson);
-            
-            if (parsedPartial?.choices?.[0]?.delta?.content) {
-              aiResponse = parsedPartial.choices[0].delta.content;
-              console.log("Reconstructed content from partial JSON");
-            } else {
-              aiResponse = "Je suis désolé, il y a eu un problème avec le modèle d'intelligence artificielle. Veuillez réessayer.";
-            }
-          } catch (parseError) {
-            console.error("Failed to parse partial JSON:", parseError);
-            aiResponse = "Je suis désolé, il y a eu un problème avec le modèle d'intelligence artificielle. Veuillez réessayer.";
-          }
-        }
+        // Dernier recours: message d'erreur informatif
+        console.error('All extraction methods failed for response:', responseStr.substring(0, 200));
+        aiResponse = "Désolé, je n'ai pas pu générer une réponse complète. Veuillez réessayer avec un autre modèle ou reformuler votre question.";
       }
     } catch (extractError) {
-      console.error("Error extracting AI response:", extractError);
-      aiResponse = "Une erreur s'est produite lors du traitement de la réponse. Veuillez réessayer.";
+      console.error("Critical error extracting AI response:", extractError);
+      aiResponse = "Une erreur critique s'est produite lors du traitement de la réponse. Veuillez réessayer.";
     }
+    
+    // Nettoyage des tokens spéciaux avec le système centralisé
+    if (aiResponse) {
+      const originalLength = aiResponse.length;
+      
+      // Utiliser le système de nettoyage centralisé
+      aiResponse = cleanAITokens(aiResponse, {
+        modelId: model.id,
+        aggressive: false, // Mode intelligent basé sur le modèle
+        preserveFormatting: true, // Préserver les sauts de ligne
+        debug: true, // Activer les logs pour diagnostic
+      });
+      
+      console.log('[API Route] Token cleaning applied');
+      console.log('[API Route] Original length:', originalLength, '→ Cleaned length:', aiResponse.length);
+      console.log('[API Route] Cleaned preview:', aiResponse.substring(0, 150));
+    }
+    
+    // Vérification finale: s'assurer qu'on a bien une réponse non vide et significative
+    if (!aiResponse || aiResponse.trim() === '' || aiResponse.length < 3) {
+      console.error('Final response is empty or too short after all extraction attempts');
+      console.error('aiResponse:', aiResponse);
+      console.error('apiResponse type:', typeof apiResponse);
+      console.error('apiResponse preview:', JSON.stringify(apiResponse).substring(0, 500));
+      
+      // Essayer d'extraire du contenu brut de apiResponse
+      let debugContent = '';
+      try {
+        if (apiResponse && typeof apiResponse === 'object') {
+          const resp = apiResponse as Record<string, unknown>;
+          if (resp.choices && Array.isArray(resp.choices) && resp.choices.length > 0) {
+            const choice = resp.choices[0] as Record<string, unknown>;
+            if (choice.message && typeof choice.message === 'object') {
+              const message = choice.message as Record<string, unknown>;
+              console.error('Raw message.content:', JSON.stringify(message.content));
+              debugContent = String(message.content || '');
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error getting debug content:', e);
+      }
+      
+      aiResponse = "Le modèle a retourné une réponse invalide ou vide. Cela peut être dû à un problème de configuration du modèle. Veuillez essayer avec un autre modèle.";
+      
+      if (debugContent && debugContent.length > 0) {
+        console.error('Debug: Found raw content:', debugContent.substring(0, 200));
+      }
+    }
+    
+    // Log avant retour pour debug
+    console.log('[API Route] Returning response with message length:', aiResponse.length);
+    console.log('[API Route] Message preview:', aiResponse.substring(0, 100));
       // Return the AI response with sources if in RAG mode
     return NextResponse.json({
       message: aiResponse,

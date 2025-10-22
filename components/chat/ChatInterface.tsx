@@ -12,6 +12,8 @@ import { Message, ChatMode, ChatSession } from '@/types';
 import { openRouterModels, getModelById } from '@/lib/models';
 import { isImageFile, isVideoFile, createMediaDescription, createImageContentWithBase64 } from '@/lib/media-utils';
 import { DEFAULT_RAG_PROVIDER } from '@/lib/rag-providers';
+import { useChatMessages } from '@/lib/hooks/useChatMessages';
+import { chatService } from '@/lib/services/chatService';
 
 interface ThinkingStep {
   id: string;
@@ -47,16 +49,42 @@ interface ScrapingReportData {
 // Génère un ID unique
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-// Variable to store the AbortController instance
-let abortController: AbortController | null = null;
-
 const ChatInterface: React.FC = () => {
   // Use the first available OpenRouter model as the default
   const defaultModelId = openRouterModels.length > 0 ? openRouterModels[0].id : "mistralai/mistral-7b-instruct:free";
   
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Utiliser le hook personnalisé pour gérer les messages de manière robuste
+  const {
+    messages,
+    addUserMessage,
+    addAssistantMessage,
+    clearMessages: clearChatMessages,
+    loadMessages,
+    truncateMessagesAfter,
+  } = useChatMessages();
+  
   const [loading, setLoading] = useState(false);
   const [modelId, setModelId] = useState(defaultModelId);
+  
+  // Helper pour ajouter un message générique (compatible ancien code)
+  // Doit être défini après modelId
+  const addMessage = useCallback((message: Message) => {
+    if (message.role === 'assistant') {
+      return addAssistantMessage(
+        message.content,
+        message.modelId || modelId,
+        message.mode || 'standard',
+        message.sources,
+        message.autoActivatedRAG
+      );
+    } else if (message.role === 'user') {
+      return addUserMessage(
+        message.content,
+        message.mode || 'standard',
+        message.attachedFile
+      );
+    }
+  }, [addUserMessage, addAssistantMessage, modelId]);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -191,7 +219,7 @@ const ChatInterface: React.FC = () => {
           const sortedConversations = [...parsedConversations].sort((a, b) => b.updatedAt - a.updatedAt);
           const mostRecentId = sortedConversations[0].id;
           setActiveConversationId(mostRecentId);
-          setMessages(sortedConversations[0].messages);
+          loadMessages(sortedConversations[0].messages);
           setModelId(sortedConversations[0].modelId);        }
       }
       
@@ -220,12 +248,12 @@ const ChatInterface: React.FC = () => {
     if (activeConversationId) {
       const activeConversation = conversations.find(c => c.id === activeConversationId);
       if (activeConversation) {
-        // Nous supprimons la vérification qui utilise JSON.stringify car elle provoque une dépendance circulaire
-        setMessages(activeConversation.messages);
+        // Charger les messages de la conversation active
+        loadMessages(activeConversation.messages);
         setModelId(activeConversation.modelId);
       }
     }
-  }, [activeConversationId, conversations]);
+  }, [activeConversationId, conversations, loadMessages]);
   
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -375,7 +403,7 @@ Just type your URL and instructions, and I'll handle the rest!`,
           mode: 'rag',
         };
         
-        setMessages(prev => [...prev, promptMessage]);
+        addMessage(promptMessage);
         setLoading(false);
         setScrapingMode(false);
         return;
@@ -407,7 +435,7 @@ Just type your URL and instructions, and I'll handle the rest!`,
       mode: 'rag',
     };
     
-    setMessages(prev => [...prev, userMessage]);
+    addMessage(userMessage);
     
     // Show thinking process in sidebar
     setSidebarCode({
@@ -574,7 +602,7 @@ Please try again with a different query or URL. The AI system is designed to han
         timestamp: Date.now(),
       };
       
-      setMessages(prev => [...prev, errorMessage]);
+      addMessage(errorMessage);
     } finally {
       setLoading(false);
       setScrapingMode(false);
@@ -834,7 +862,7 @@ The AI system will:
         }))
       };
       
-      setMessages(prev => [...prev, assistantMessage]);
+      addMessage(assistantMessage);
     } else {
       throw new Error('AI-enhanced search failed. Please try a different query or check your connection.');
     }
@@ -950,7 +978,7 @@ The complete extraction process, AI analysis, and raw data are available in the 
       }]
     };
     
-    setMessages(prev => [...prev, assistantMessage]);
+    addMessage(assistantMessage);
   };
 
   const handleSendMessage = async (content: string, mode: ChatMode = 'standard', file: File | null = null) => {
@@ -994,9 +1022,11 @@ The complete extraction process, AI analysis, and raw data are available in the 
       console.log("Message avec fichier attaché:", userMessage);
     }
     
-    // Ajouter le message à la conversation
-    setMessages(prev => [...prev, userMessage]);
+    // Ajouter le message utilisateur à la conversation
+    addUserMessage(content, mode, userMessage.attachedFile);
     setLoading(true);
+    
+    // PAS de message assistant temporaire - on attend la vraie réponse
     
     try {
       // Récupérer l'objet modèle complet
@@ -1098,188 +1128,110 @@ The complete extraction process, AI analysis, and raw data are available in the 
         }
       }
       
-      console.log('Envoi au modèle:', modelObject.name, 'mode:', mode, 'avec fichier:', currentFile?.name);
-      
-      // Create a new AbortController for this request
-      abortController = new AbortController();
-      
       // Récupérer les clés API depuis le localStorage
       const openRouterKey = localStorage.getItem('tetika-openrouter-key') || '';
       const notdiamondKey = localStorage.getItem('tetika-notdiamond-key') || '';
       const serpapiKey = localStorage.getItem('tetika-serpapi-key') || '';
-        // Préparer les données à envoyer
-      const requestBody = {
-        messages: messagesForAPI,
-        model: modelObject,
-        mode: mode,
-        hasAttachedFile: !!currentFile,
-        ragProvider: selectedRAGProvider,
-        apiKeys: {
-          openrouter: openRouterKey,
-          notdiamond: notdiamondKey,
-          serpapi: serpapiKey
-        }
+      
+      const apiKeys = {
+        openrouter: openRouterKey,
+        notdiamond: notdiamondKey,
+        serpapi: serpapiKey
       };
       
-      // Log des données envoyées pour le débogage (sans les clés API complètes)
-      console.log('Données de requête:', {
-        ...requestBody,
-        apiKeys: {
-          openrouter: openRouterKey ? `${openRouterKey.substring(0, 8)}...` : 'non défini',
-          notdiamond: notdiamondKey ? `${notdiamondKey.substring(0, 8)}...` : 'non défini',
-          serpapi: serpapiKey ? `${serpapiKey.substring(0, 8)}...` : 'non défini'
-        }
-      });
+      console.log('Envoi au modèle:', modelObject.name, 'mode:', mode, 'avec fichier:', currentFile?.name);
       
-      let data;
+      // Utiliser le service de chat pour envoyer le message
+      const data = await chatService.sendMessage(
+        messagesForAPI,
+        modelObject,
+        mode,
+        apiKeys,
+        selectedRAGProvider,
+        !!currentFile
+      );
       
-      try {
-        const requestBodyJSON = JSON.stringify(requestBody);
-        
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          signal: abortController.signal,
-          body: requestBodyJSON,
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          let errorMessage = 'Échec de la génération de réponse';
-          
-          try {
-            const errorData = JSON.parse(errorText);
-            errorMessage = errorData.error || errorMessage;
-          } catch (parseError) {
-            console.error('Erreur lors du parsing de la réponse d\'erreur:', parseError);
-            errorMessage = `${errorMessage}: ${errorText.substring(0, 100)}...`;
-          }
-          
-          throw new Error(errorMessage);
-        }
-        
-        try {
-          data = await response.json();
-        } catch (parseError) {
-          console.error('Erreur lors du parsing de la réponse:', parseError);
-          throw new Error('Erreur lors de la lecture de la réponse du serveur');
-        }
-        
-        // Déterminer le mode réel en fonction de si le RAG a été activé automatiquement
-        const responseMode = data.autoActivatedRAG ? 'rag' : mode;
-        // Si le RAG a été activé automatiquement, mettre à jour l'état
-        if (data.autoActivatedRAG) {
-          setRagMode(true);
-        }
-          // Créer le message de réponse
-        const assistantMessage: Message = {
-          id: generateId(),
-          role: 'assistant',
-          content: data.message,
-          timestamp: Date.now(),
-          modelId: modelId, // Ajouter l'ID du modèle utilisé
-          sources: data.sources ? data.sources.map((source: { 
-            title: string; 
-            url: string; 
-            snippet: string; 
-            position?: number 
-          }) => ({
-            title: source.title,
-            link: source.url, // Map url to link for compatibility with SourceType
-            url: source.url,  // Keep url for backward compatibility
-            snippet: source.snippet,
-            position: source.position
-          })) : [],
-          mode: responseMode, // Utiliser le mode réel de la réponse
-          autoActivatedRAG: data.autoActivatedRAG // Ajouter marqueur pour indiquer si le RAG a été activé automatiquement
-        };
-        
-        setMessages(prev => [...prev, assistantMessage]);
-      } catch (err) {
-        // Utilisons une approche plus robuste pour détecter les annulations
-        // Vérifier si c'est une erreur d'annulation avant de la logger
-        const isUserCancellation = 
-          (err instanceof DOMException && err.name === 'AbortError') || 
-          (err instanceof Error && (
-            err.name === 'AbortError' || 
-            err.message.includes('annulée') ||
-            err.message.includes('canceled') ||
-            err.message.includes('cancelled') ||
-            err.message === 'Demande annulée par l\'utilisateur'
-          ));
-        
-        if (isUserCancellation) {
-          // Annulation volontaire, pas d'erreur à afficher
-          console.log('✓ Génération arrêtée par l\'utilisateur'); // Log informatif uniquement
-          return; // Sortir sans afficher de message d'erreur
-        }
-        
-        // Seulement pour les vraies erreurs, afficher dans la console
-        console.error('Erreur lors de l\'obtention de la réponse IA:', err);
-        
-        // Log détaillé pour aider au débogage
-        if (err instanceof Error) {
-          console.log('Détails de l\'erreur:', {
-            name: err.name,
-            message: err.message,
-            stack: err.stack?.substring(0, 500)
-          });
-        }
-        
-        // Message d'erreur plus spécifique pour les problèmes de JSON
-        let errorContent = `Désolé, une erreur s'est produite: ${err instanceof Error ? err.message : 'Erreur inconnue'}. Veuillez réessayer.`;
-        
-        // Détecter les erreurs de JSON spécifiques
-        if (err instanceof Error && 
-            (err.message.includes('JSON') || 
-             err.message.includes('Unexpected end of') || 
-             err.message.includes('Unexpected token'))) {
-          errorContent = `Erreur de format de données: ${err.message}. Veuillez vérifier que votre message ne contient pas de caractères spéciaux qui pourraient poser problème.`;
-        }
-          // Ajouter un message d'erreur uniquement pour les vraies erreurs
-        const errorMessage: Message = {
-          id: generateId(),
-          role: 'assistant',
-          content: errorContent,
-          timestamp: Date.now(),
-          modelId: modelId, // Ajouter l'ID du modèle utilisé
-          mode: mode,
-        };
-        setMessages(prev => [...prev, errorMessage]);
+      // Déterminer le mode réel en fonction de si le RAG a été activé automatiquement
+      const responseMode = data.autoActivatedRAG ? 'rag' : mode;
+      
+      // Si le RAG a été activé automatiquement, mettre à jour l'état
+      if (data.autoActivatedRAG) {
+        setRagMode(true);
       }
-    } catch (outerError) {
-      // Gestion des erreurs dans le bloc externe (hors API)
-      console.error('Erreur externe:', outerError);
-        // Ajouter un message d'erreur
-      const errorMessage: Message = {
-        id: generateId(),
-        role: 'assistant',
-        content: `Erreur: ${outerError instanceof Error ? outerError.message : 'Erreur inconnue'}`,
-        timestamp: Date.now(),
-        modelId: modelId, // Ajouter l'ID du modèle utilisé
-        mode: mode,
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      
+      // Ajouter le message assistant avec la réponse complète
+      // Le hook validera automatiquement que le contenu n'est pas vide
+      const assistantMessage = addAssistantMessage(
+        data.message,
+        modelId,
+        responseMode,
+        data.sources ? data.sources.map((source: { 
+          title: string; 
+          url: string; 
+          snippet: string; 
+          position?: number 
+        }) => ({
+          title: source.title,
+          link: source.url,
+          url: source.url,
+          snippet: source.snippet,
+          position: source.position
+        })) : [],
+        data.autoActivatedRAG
+      );
+      
+      if (!assistantMessage) {
+        throw new Error('Impossible de créer le message assistant - contenu vide');
+      }
+    } catch (err) {
+      // Gestion des erreurs améliorée
+      const isUserCancellation = 
+        (err instanceof DOMException && err.name === 'AbortError') || 
+        (err instanceof Error && (
+          err.name === 'AbortError' || 
+          err.message.includes('annulée') ||
+          err.message.includes('canceled') ||
+          err.message.includes('cancelled') ||
+          err.message === 'Demande annulée par l\'utilisateur'
+        ));
+      
+      if (isUserCancellation) {
+        console.log('✓ Génération arrêtée par l\'utilisateur');
+        return;
+      }
+      
+      // Pour les autres erreurs, afficher un message à l'utilisateur
+      console.error('Erreur lors de l\'obtention de la réponse IA:', err);
+      
+      const errorContent = err instanceof Error 
+        ? err.message 
+        : 'Une erreur inconnue s\'est produite';
+      
+      // Formater le message d'erreur avec un préfixe approprié
+      // Si l'erreur contient déjà des suggestions (💡), ne pas ajouter de texte supplémentaire
+      const formattedError = errorContent.includes('💡') 
+        ? errorContent 
+        : `❌ **Erreur**\n\n${errorContent}\n\nVeuillez réessayer ou choisir un autre modèle.`;
+      
+      // Ajouter un message d'erreur
+      addAssistantMessage(
+        formattedError,
+        modelId,
+        mode
+      );
     } finally {
       setLoading(false);
-      abortController = null;
     }
   };
     // Fonction pour arrêter la génération de la réponse
   const handleStopGeneration = useCallback(() => {
-    if (abortController) {
-      console.log('Arrêt de la génération de la réponse');
-      try {
-        abortController.abort('Demande annulée par l\'utilisateur');
-      } catch (err) {
-        // Ignorer l'erreur si l'annulation échoue
-        console.log('Erreur lors de l\'annulation de la requête:', err);
-      } finally {
-        abortController = null;
-        setLoading(false);
-      }
+    console.log('Arrêt de la génération de la réponse');
+    try {
+      chatService.cancelRequest();
+    } catch (err) {
+      console.log('Erreur lors de l\'annulation de la requête:', err);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -1299,7 +1251,7 @@ The complete extraction process, AI analysis, and raw data are available in the 
     const lastUserMessage = messages[lastUserMessageIndex];
     
     // Supprimer tous les messages après ce message utilisateur
-    setMessages(prev => prev.slice(0, lastUserMessageIndex + 1));
+    truncateMessagesAfter(lastUserMessageIndex);
     
     // Réenvoyer le message pour générer une nouvelle réponse
     const mode = lastUserMessage.mode as ChatMode || 'standard';
@@ -1313,7 +1265,7 @@ The complete extraction process, AI analysis, and raw data are available in the 
   };
     const handleClearChat = () => {
     // Crée une nouvelle conversation et efface les messages
-    setMessages([]);
+    clearChatMessages(); // Utiliser la fonction du hook
     setActiveConversationId(null);
     // RAG suggestions code removed
   };
@@ -1323,7 +1275,7 @@ The complete extraction process, AI analysis, and raw data are available in the 
     // Effacer toutes les conversations du stockage
     setConversations([]);
     setActiveConversationId(null);
-    setMessages([]);
+    clearChatMessages(); // Utiliser la fonction du hook
     
     // Effacer également du localStorage
     try {

@@ -411,8 +411,21 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       </span>
     );
   };  const processMessageContent = () => {
-    if (!message.content) {
-      return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content || ''}</ReactMarkdown>;
+    // Gestion robuste des messages vides ou invalides
+    if (!message.content || message.content.trim() === '') {
+      // Si le message est vide, afficher un indicateur de chargement ou message par défaut
+      if (isAI) {
+        return (
+          <div className={`flex items-center gap-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} italic`}>
+            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Génération en cours...
+          </div>
+        );
+      }
+      return <p className="text-sm opacity-70">(Message vide)</p>;
     }
 
     // If no sources, use normal ReactMarkdown which will handle code blocks properly
