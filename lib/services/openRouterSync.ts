@@ -244,7 +244,11 @@ export async function getCachedFreeModels(
   const allModels = await fetchOpenRouterModels();
   const freeModels = filterFreeModels(allModels);
   
+  // Créer un Set des IDs des modèles actuellement disponibles
+  const currentModelIds = new Set(freeModels.map(m => m.id));
+  
   // Convertir et marquer les nouveaux modèles
+  // IMPORTANT: On ne garde QUE les modèles qui existent dans l'API actuelle
   const convertedModels = freeModels.map(model => {
     const previousIsNew = previousModelMap.get(model.id);
     
@@ -254,11 +258,22 @@ export async function getCachedFreeModels(
       isNew = previousIsNew;
     } else {
       // Nouveau modèle - créer timestamp
+      console.log('[OpenRouter Sync] New model detected:', model.id);
       isNew = { added: now };
     }
     
     return convertToAppModel(model, isNew);
   });
+  
+  // Log des modèles supprimés (qui étaient dans localStorage mais plus dans l'API)
+  if (previousModels) {
+    const removedModels = previousModels.filter(m => !currentModelIds.has(m.id));
+    if (removedModels.length > 0) {
+      console.log('[OpenRouter Sync] Removed models (no longer free or available):', 
+        removedModels.map(m => m.id)
+      );
+    }
+  }
   
   const sortedModels = sortModelsByQuality(convertedModels);
   

@@ -35,12 +35,19 @@ export function useOpenRouterModels() {
     setError(null);
 
     try {
-      // Essayer de charger depuis localStorage d'abord
-      if (!forceRefresh) {
+      // Vérifier la fraîcheur du cache localStorage
+      const lastSyncTimestamp = localStorage.getItem('tetika-models-last-sync');
+      const cacheMaxAge = 24 * 60 * 60 * 1000; // 24 heures
+      const cacheIsStale = !lastSyncTimestamp || 
+        (Date.now() - parseInt(lastSyncTimestamp)) > cacheMaxAge;
+
+      // Essayer de charger depuis localStorage si le cache est frais
+      if (!forceRefresh && !cacheIsStale) {
         const cachedModels = loadFreeModelsFromLocalStorage();
         if (cachedModels && cachedModels.length > 0) {
+          console.log('[useOpenRouterModels] Using fresh localStorage cache');
           setModels(cachedModels);
-          setLastSync(new Date());
+          setLastSync(new Date(parseInt(lastSyncTimestamp)));
           setIsLoading(false);
           
           // Charger les stats en arrière-plan
@@ -50,23 +57,34 @@ export function useOpenRouterModels() {
         }
       }
 
-      // Charger depuis l'API
-      console.log('[useOpenRouterModels] Loading models from API...');
-      const fetchedModels = await getCachedFreeModels(forceRefresh);
+      // Cache périmé ou force refresh - charger depuis l'API
+      console.log('[useOpenRouterModels] Cache stale or force refresh, loading from API...');
+      const fetchedModels = await getCachedFreeModels(true);
       
       setModels(fetchedModels);
-      setLastSync(new Date());
+      const now = new Date();
+      setLastSync(now);
       
-      // Sauvegarder dans localStorage
+      // Sauvegarder dans localStorage avec timestamp
       saveFreeModelsToLocalStorage(fetchedModels);
+      localStorage.setItem('tetika-models-last-sync', now.getTime().toString());
       
       // Charger les stats
       const fetchedStats = await getFreeModelsStats();
       setStats(fetchedStats);
       
+      console.log('[useOpenRouterModels] Successfully synced', fetchedModels.length, 'models');
+      
     } catch (err) {
       console.error('[useOpenRouterModels] Error loading models:', err);
       setError(err instanceof Error ? err.message : 'Failed to load models');
+      
+      // En cas d'erreur, essayer de charger depuis localStorage même si périmé
+      const cachedModels = loadFreeModelsFromLocalStorage();
+      if (cachedModels && cachedModels.length > 0) {
+        console.log('[useOpenRouterModels] Fallback to stale cache after error');
+        setModels(cachedModels);
+      }
     } finally {
       setIsLoading(false);
     }
