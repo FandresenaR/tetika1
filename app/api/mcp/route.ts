@@ -176,15 +176,16 @@ async function performSearXNGSearch(query: string, category?: string) {
   const searchCategory = category || detectSearchCategory(query);
   console.log(`[SearXNG] Recherche RAG: "${query}" dans la catégorie: ${searchCategory}`);
   
-  // Optimized SearXNG instances with better research capabilities
+  // Updated and verified SearXNG instances (as of October 2025)
   const instances = [
+    'https://search.bus-hit.me',
+    'https://searx.fmac.xyz',
+    'https://search.mdosch.de',
+    'https://searx.namejeff.xyz',
+    'https://searx.theanonymouse.xyz',
+    'https://search.ononoki.org',
     'https://searx.be',
-    'https://searx.tiekoetter.com', 
-    'https://opnxng.com',
-    'https://searxng.world',
-    'https://searx.oloke.xyz',
-    'https://search.sapti.me',
-    'https://searx.work'
+    'https://searx.tiekoetter.com'
   ];
   
   for (const instance of instances) {
@@ -228,7 +229,9 @@ async function performSearXNGSearch(query: string, category?: string) {
     }
   }
   
-  throw new Error('Toutes les instances SearXNG ont échoué');
+  console.error('[SearXNG] Toutes les instances ont échoué, retour de résultats vides');
+  // Au lieu de lancer une erreur, retourner un tableau vide pour permettre le fallback
+  return '';
 }
 
 function transformSearXNGResults(htmlData: string): SearchResult[] {
@@ -512,21 +515,26 @@ export async function multiProviderSearch(args: Record<string, unknown>): Promis
       try {
         console.log('[MCP] Utilisation de SearXNG optimisé pour RAG');
         const searxResults = await performSearXNGSearch(query);
-        const transformedResults = transformSearXNGResults(searxResults);
         
-        if (transformedResults.length > 0) {
-          console.log(`[SearXNG] ${transformedResults.length} résultats RAG trouvés`);
-          return {
-            results: transformedResults,
-            provider: 'searxng-rag',
-            success: true,
-            category: detectSearchCategory(query), // Include detected category
-            totalResults: transformedResults.length
-          };
-        } else {
-          console.warn('[SearXNG] Aucun résultat RAG trouvé, fallback vers SerpAPI');
-          return multiProviderSearch({ ...args, provider: 'serpapi' });
+        // Vérifier si on a des résultats (chaîne non vide)
+        if (searxResults && searxResults.length > 0) {
+          const transformedResults = transformSearXNGResults(searxResults);
+          
+          if (transformedResults.length > 0) {
+            console.log(`[SearXNG] ${transformedResults.length} résultats RAG trouvés`);
+            return {
+              results: transformedResults,
+              provider: 'searxng-rag',
+              success: true,
+              category: detectSearchCategory(query),
+              totalResults: transformedResults.length
+            };
+          }
         }
+        
+        // Si pas de résultats, fallback automatique vers SerpAPI
+        console.warn('[SearXNG] Aucun résultat RAG trouvé ou instances indisponibles, fallback vers SerpAPI');
+        return multiProviderSearch({ ...args, provider: 'serpapi' });
       } catch (searxError) {
         console.error('[SearXNG] Erreur lors de la recherche RAG:', searxError);
         console.log('[SearXNG] Fallback vers SerpAPI après erreur');

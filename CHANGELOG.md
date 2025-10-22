@@ -27,6 +27,12 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - **Messages d'erreur clairs** si le fichier dépasse la limite
   - **Détection automatique** des erreurs de dépassement de contexte avec suggestions de solutions
 
+- **Recherche de modèles hybride (dynamique + statique)**
+  - `ChatInterface` utilise maintenant `useOpenRouterModels()` pour charger les modèles dynamiques
+  - Fonction `getModelByIdFromAllSources()` cherche dans les deux listes
+  - Fallback automatique sur la liste statique si le modèle n'est pas dans la liste dynamique
+  - Messages d'erreur détaillés avec liste des modèles disponibles
+
 - **Système de nettoyage des modèles OpenRouter**
   - Suppression automatique des modèles qui n'existent plus dans l'API
   - Suppression des modèles qui ne sont plus gratuits
@@ -104,7 +110,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Extraction automatique des nombres de tokens (input vs limite)
   - Suggestions de modèles avec contexte plus grand (Gemini 1M-2M tokens)
 
-- **`components/chat/ChatInterface.tsx`** (Support multimodal des fichiers + limites)
+- **`components/chat/ChatInterface.tsx`** (Support multimodal des fichiers + recherche hybride)
   - Ajout de la conversion PDF vers base64 pour permettre l'extraction de texte par les IA multimodales
   - Ajout de la conversion automatique de tous types de fichiers (Word, Excel, PowerPoint, archives) en base64
   - Détection intelligente du type de fichier avec descriptions appropriées
@@ -114,6 +120,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Maintien du support existant pour fichiers texte et images
   - **Vérification de taille AVANT conversion** : 3 MB pour base64, 10 MB pour texte, 5 MB pour images
   - **Messages d'alerte clairs** avec taille exacte et limites recommandées
+  - **Import et utilisation de `useOpenRouterModels()`** pour accéder aux modèles dynamiques
+  - **Fonction `getModelByIdFromAllSources()`** pour recherche hybride (dynamique + statique)
+  - **Messages d'erreur améliorés** avec logging des modèles disponibles
+
+- **`app/api/mcp/route.ts`** (Amélioration fiabilité SearXNG)
+  - **Mise à jour des instances SearXNG** avec nouvelles instances vérifiées (Octobre 2025)
+  - Nouvelles instances : `search.bus-hit.me`, `searx.fmac.xyz`, `search.mdosch.de`, `searx.namejeff.xyz`, etc.
+  - **Gestion d'erreur améliorée** : retourne chaîne vide au lieu de lancer une erreur
+  - **Fallback automatique robuste** : SearXNG → SerpAPI sans interruption
+  - Logging clair : `"Toutes les instances ont échoué, retour de résultats vides"`
+  - Vérification de la présence de résultats avant transformation
 
 - **`app/api/chat/route.ts`**
   - Retourne des status codes HTTP appropriés selon le type d'erreur :
