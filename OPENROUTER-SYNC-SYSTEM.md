@@ -2,7 +2,17 @@
 
 ## Vue d'ensemble
 
-Ce système récupère automatiquement la liste des modèles gratuits depuis l'API OpenRouter, les filtre, les convertit au format de l'application, et les met en cache pour une utilisation optimale.
+Ce système récupère automatiquement la liste des modèles gratuits depuis l'API OpenRouter, les filtre, les convertit au format de l'application, les classe par catégories, détecte les nouveaux modèles, et les met en cache pour une utilisation optimale.
+
+### Fonctionnalités clés
+
+- ✅ **Synchronisation automatique** depuis l'API OpenRouter
+- ✅ **Filtrage des modèles gratuits** (pricing = 0)
+- ✅ **Classification automatique par catégories** (général, code, vision, créatif, raisonnement, recherche)
+- ✅ **Détection des nouveaux modèles** avec badge "NEW"
+- ✅ **Cache intelligent** (mémoire + localStorage)
+- ✅ **Interface utilisateur complète** dans les paramètres
+- ✅ **Statistiques détaillées** par provider et catégorie
 
 ## Architecture
 
@@ -52,21 +62,51 @@ fetchOpenRouterModels(): Promise<OpenRouterModel[]>
 // Filtre les modèles gratuits (pricing = 0)
 filterFreeModels(models: OpenRouterModel[]): OpenRouterModel[]
 
-// Convertit au format de l'application
-convertToAppModel(model: OpenRouterModel)
+// Assigne automatiquement une catégorie au modèle
+assignCategory(model: OpenRouterModel): 'general' | 'coding' | 'vision' | 'creative' | 'reasoning' | 'research'
+
+// Convertit au format de l'application avec catégorie et flag isNew
+convertToAppModel(model: OpenRouterModel, isNew: boolean)
 
 // Trie par qualité (providers connus, context length)
 sortModelsByQuality(models)
 
-// Récupère avec cache (1 heure par défaut)
+// Récupère avec cache et détecte les nouveaux modèles
 getCachedFreeModels(forceRefresh?, cacheDuration?)
 
 // Invalide le cache
 invalidateModelCache()
 
-// Statistiques des modèles
+// Statistiques des modèles (avec catégories et nouveaux modèles)
 getFreeModelsStats()
 ```
+
+#### Classification par catégories
+
+Le système utilise plusieurs sources pour déterminer la catégorie d'un modèle :
+
+1. **Architecture**: Les modèles avec `modality: "text+image"` → `vision`
+2. **Nom du modèle**: Patterns comme "code", "coder", "deepcoder" → `coding`
+3. **Nom du modèle**: Patterns comme "r1", "o1", "qwq", "reasoning" → `reasoning`
+4. **Description**: Analyse sémantique via `getCategoryFromDescription()` (lib/models.ts)
+
+Catégories disponibles :
+- 🌐 **general**: Usage général et polyvalent
+- 💻 **coding**: Spécialisé en programmation
+- 👁️ **vision**: Traitement d'images et multimodal
+- 🎨 **creative**: Création de contenu et narration
+- 🧠 **reasoning**: Raisonnement et résolution de problèmes
+- 🔬 **research**: Recherche scientifique et données
+
+#### Détection des nouveaux modèles
+
+À chaque synchronisation, le système :
+
+1. **Charge les anciens modèles** depuis localStorage
+2. **Extrait les IDs** des modèles précédents
+3. **Compare avec les nouveaux** modèles récupérés de l'API
+4. **Marque comme `isNew`** les modèles qui n'étaient pas présents avant
+5. **Affiche un badge "NEW"** dans l'interface utilisateur
 
 #### Cache
 
@@ -81,15 +121,43 @@ getFreeModelsStats()
 
 ```typescript
 const {
-  models,           // Liste des modèles
+  models,           // Liste des modèles avec catégorie et flag isNew
   isLoading,        // État de chargement
   error,            // Erreur éventuelle
   lastSync,         // Date de dernière synchro
-  stats,            // Statistiques
+  stats,            // Statistiques (total, nouveaux, par provider, par catégorie)
   refreshModels,    // Force un refresh
-  filterModels,     // Filtre les modèles
+  filterModels,     // Filtre les modèles (par provider, catégorie, nouveaux, etc.)
   getProviders,     // Liste des providers
 } = useOpenRouterModels();
+```
+
+#### Filtrage avancé
+
+```tsx
+// Filtre par catégorie
+const codingModels = filterModels({ category: 'coding' });
+
+// Filtre les nouveaux modèles uniquement
+const newModels = filterModels({ onlyNew: true });
+
+// Filtre par provider et avec vision
+const googleVisionModels = filterModels({ 
+  provider: 'google', 
+  hasVision: true 
+});
+
+// Recherche textuelle
+const searchResults = filterModels({ 
+  search: 'deepseek' 
+});
+
+// Combinaison de filtres
+const filteredModels = filterModels({
+  category: 'reasoning',
+  minContextLength: 32000,
+  onlyNew: true
+});
 ```
 
 #### Utilisation

@@ -3,6 +3,8 @@
  * Récupère la liste des modèles disponibles et leurs caractéristiques depuis l'API OpenRouter
  */
 
+import { getCategoryFromDescription } from '../models';
+
 export interface OpenRouterModel {
   id: string;
   name: string;
@@ -76,9 +78,47 @@ export function filterFreeModels(models: OpenRouterModel[]): OpenRouterModel[] {
 }
 
 /**
+ * Assigne automatiquement une catégorie basée sur la description et les caractéristiques
+ */
+export function assignCategory(model: OpenRouterModel): 'general' | 'coding' | 'vision' | 'creative' | 'reasoning' | 'research' {
+  const description = model.description || '';
+  const name = model.name.toLowerCase();
+  const modelId = model.id.toLowerCase();
+  
+  // Vérifier la vision d'abord
+  if (model.architecture?.modality === 'text+image') {
+    return 'vision';
+  }
+  
+  // Patterns de noms pour le coding
+  const codingPatterns = ['code', 'coder', 'developer', 'programming', 'deepcoder'];
+  if (codingPatterns.some(p => name.includes(p) || modelId.includes(p))) {
+    return 'coding';
+  }
+  
+  // Patterns pour le reasoning
+  const reasoningPatterns = ['reasoning', 'think', 'r1', 'o1', 'qwq'];
+  if (reasoningPatterns.some(p => name.includes(p) || modelId.includes(p))) {
+    return 'reasoning';
+  }
+  
+  // Utiliser la fonction de lib/models.ts pour la description
+  if (description) {
+    const categoryFromDesc = getCategoryFromDescription(description);
+    if (categoryFromDesc !== 'general') {
+      return categoryFromDesc;
+    }
+  }
+  
+  return 'general';
+}
+
+/**
  * Convertit un modèle OpenRouter en format interne de l'application
  */
-export function convertToAppModel(model: OpenRouterModel) {
+export function convertToAppModel(model: OpenRouterModel, isNew = false) {
+  const category = assignCategory(model);
+  
   return {
     id: model.id,
     name: model.name,
@@ -86,6 +126,8 @@ export function convertToAppModel(model: OpenRouterModel) {
     description: model.description || '',
     contextLength: model.context_length,
     isFree: true,
+    category,
+    isNew,
     features: {
       rag: true,
       vision: model.architecture?.modality === 'text+image',
@@ -113,7 +155,7 @@ export async function getFreeModels() {
   
   console.log('[OpenRouter Sync] Found', freeModels.length, 'free models');
   
-  return freeModels.map(convertToAppModel);
+  return freeModels.map(m => convertToAppModel(m, false));
 }
 
 /**
@@ -170,17 +212,32 @@ export async function getCachedFreeModels(
     return modelCache.models;
   }
   
-  // Récupérer les nouveaux modèles
-  console.log('[OpenRouter Sync] Cache expired or force refresh, fetching new models');
-  const models = await getFreeModels();
-  const sortedModels = sortModelsByQuality(models);
+  // Charger les anciens modèles depuis localStorage pour comparaison
+  const previousModels = loadFreeModelsFromLocalStorage();
+  const previousModelIds = new Set(previousModels?.map(m => m.id) || []);
   
-  // Mettre à jour le cache
+  // Récupérer les nouveaux modèles depuis l'API
+  console.log('[OpenRouter Sync] Cache expired or force refresh, fetching new models');
+  const allModels = await fetchOpenRouterModels();
+  const freeModels = filterFreeModels(allModels);
+  
+  // Convertir et marquer les nouveaux modèles
+  const convertedModels = freeModels.map(model => {
+    const isNew = !previousModelIds.has(model.id);
+    return convertToAppModel(model, isNew);
+  });
+  
+  const sortedModels = sortModelsByQuality(convertedModels);
+  
+  // Mettre à jour le cache mémoire
   modelCache = {
     models: sortedModels,
     timestamp: now,
     expiresIn: cacheDuration,
   };
+  
+  // Sauvegarder dans localStorage pour la prochaine comparaison
+  saveFreeModelsToLocalStorage(sortedModels);
   
   return sortedModels;
 }
@@ -201,7 +258,9 @@ export async function getFreeModelsStats() {
   
   const stats = {
     total: models.length,
+    new: models.filter(m => m.isNew).length,
     byProvider: {} as Record<string, number>,
+    byCategory: {} as Record<string, number>,
     withVision: models.filter(m => m.features.vision).length,
     averageContextLength: Math.round(
       models.reduce((sum, m) => sum + m.contextLength, 0) / models.length
@@ -213,6 +272,12 @@ export async function getFreeModelsStats() {
   models.forEach(model => {
     const provider = model.id.split('/')[0];
     stats.byProvider[provider] = (stats.byProvider[provider] || 0) + 1;
+  });
+  
+  // Compter par catégorie
+  models.forEach(model => {
+    const category = model.category || 'general';
+    stats.byCategory[category] = (stats.byCategory[category] || 0) + 1;
   });
   
   return stats;

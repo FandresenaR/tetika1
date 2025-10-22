@@ -19,7 +19,9 @@ export function useOpenRouterModels() {
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [stats, setStats] = useState<{
     total: number;
+    new: number;
     byProvider: Record<string, number>;
+    byCategory: Record<string, number>;
     withVision: number;
     averageContextLength: number;
     maxContextLength: number;
@@ -90,14 +92,24 @@ export function useOpenRouterModels() {
    */
   const filterModels = useCallback((filters: {
     provider?: string;
+    category?: 'general' | 'coding' | 'vision' | 'creative' | 'reasoning' | 'research';
     hasVision?: boolean;
     minContextLength?: number;
     search?: string;
+    onlyNew?: boolean;
   }) => {
     return models.filter(model => {
       if (filters.provider) {
         const modelProvider = model.id.split('/')[0];
         if (modelProvider !== filters.provider) return false;
+      }
+
+      if (filters.category) {
+        if (model.category !== filters.category) return false;
+      }
+
+      if (filters.onlyNew) {
+        if (!model.isNew) return false;
       }
 
       if (filters.hasVision !== undefined) {

@@ -5,6 +5,68 @@ Tous les changements notables apportés au projet Tetika seront documentés dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-10-22
+
+### 🆕 Classification et Badge "NEW" pour les Modèles
+
+#### Ajouté
+
+- **Classification automatique des modèles par catégories**
+  - Fonction `assignCategory()` dans `lib/services/openRouterSync.ts`
+  - 6 catégories : général, code, vision, créatif, raisonnement, recherche
+  - Analyse basée sur : architecture, nom du modèle, description
+  - Utilise `getCategoryFromDescription()` de `lib/models.ts`
+  - Icônes visuelles pour chaque catégorie (🌐 💻 👁️ 🎨 🧠 🔬)
+
+- **Détection des nouveaux modèles avec badge "NEW"**
+  - Comparaison avec le cache localStorage précédent
+  - Flag `isNew` dans l'interface `AIModel` (`types/index.ts`)
+  - Badge vert "NEW" affiché dans l'interface utilisateur
+  - Section dédiée "Modèles récemment ajoutés" dans les paramètres
+  - Affichage des 10 premiers nouveaux modèles avec catégorie et contexte
+
+- **Statistiques enrichies par catégorie**
+  - Comptage par catégorie dans `getFreeModelsStats()`
+  - Grille visuelle des catégories dans les paramètres
+  - Statistique "Nouveaux" affichée en vert
+  - 6 cartes de statistiques (au lieu de 4) : Total, Providers, Nouveaux, Vision + grille catégories
+
+- **Filtrage avancé dans le hook useOpenRouterModels**
+  - Filtre par catégorie : `filterModels({ category: 'coding' })`
+  - Filtre nouveaux uniquement : `filterModels({ onlyNew: true })`
+  - Combinaison de filtres multiples supportée
+  - Filtres disponibles : provider, category, hasVision, minContextLength, search, onlyNew
+
+- **Interface utilisateur améliorée**
+  - Liste des nouveaux modèles avec icônes de catégorie
+  - Badge "NEW" en vert avec bordure
+  - Contexte (tokens) affiché pour chaque modèle
+  - Scroll automatique si plus de 10 nouveaux modèles
+  - Affichage responsive et optimisé
+
+#### Modifié
+
+- **openRouterSync.ts**
+  - `convertToAppModel()` accepte maintenant `isNew` comme paramètre
+  - `getCachedFreeModels()` compare avec l'ancien cache pour détecter les nouveaux
+  - `getFreeModelsStats()` inclut `new` et `byCategory`
+
+- **useOpenRouterModels.ts**
+  - Interface stats étendue avec `new` et `byCategory`
+  - `filterModels()` supporte `category` et `onlyNew`
+
+- **SettingsModal.tsx**
+  - Section "Nouveaux modèles" ajoutée après les providers
+  - Grille de catégories ajoutée après les statistiques
+  - Badge "NEW" appliqué aux modèles récents
+
+#### Technique
+
+- Import de `getCategoryFromDescription` depuis `lib/models.ts`
+- Patterns de détection : coding (code, coder, deepcoder), reasoning (r1, o1, qwq)
+- Stockage persistant dans localStorage pour comparaison entre syncs
+- Performance : limite à 10 modèles affichés dans la liste "NEW"
+
 ## [0.5.0] - 2025-10-22
 
 ### 🔄 Système de Synchronisation Automatique des Modèles OpenRouter

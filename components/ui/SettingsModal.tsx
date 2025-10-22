@@ -487,14 +487,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                     </p>
                   </div>
                   <div className="bg-gray-700 rounded-lg p-3">
+                    <p className="text-xs text-gray-400">Nouveaux</p>
+                    <p className="text-2xl font-bold text-green-400">{stats.new}</p>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-3">
                     <p className="text-xs text-gray-400">Avec Vision</p>
                     <p className="text-2xl font-bold text-cyan-400">{stats.withVision}</p>
                   </div>
-                  <div className="bg-gray-700 rounded-lg p-3">
-                    <p className="text-xs text-gray-400">Contexte Max</p>
-                    <p className="text-2xl font-bold text-cyan-400">
-                      {(stats.maxContextLength / 1000).toFixed(0)}k
-                    </p>
+                </div>
+              )}
+
+              {/* Catégories */}
+              {stats && !isLoadingModels && stats.byCategory && Object.keys(stats.byCategory).length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-gray-300 mb-2">
+                    Par catégorie:
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {Object.entries(stats.byCategory).map(([category, count]) => {
+                      const categoryLabels: Record<string, string> = {
+                        general: '🌐 Général',
+                        coding: '💻 Code',
+                        vision: '👁️ Vision',
+                        creative: '🎨 Créatif',
+                        reasoning: '🧠 Raisonnement',
+                        research: '🔬 Recherche',
+                      };
+                      return (
+                        <div key={category} className="bg-gray-700 rounded-lg p-2 text-center">
+                          <p className="text-xs text-gray-400">{categoryLabels[category] || category}</p>
+                          <p className="text-lg font-bold text-cyan-400">{count}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -523,7 +548,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
               {/* Providers */}
               {!isLoadingModels && getProviders().length > 0 && (
-                <div>
+                <div className="mb-4">
                   <p className="text-sm font-medium text-gray-300 mb-2">
                     Providers disponibles:
                   </p>
@@ -539,6 +564,48 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                         </span>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* Nouveaux modèles */}
+              {!isLoadingModels && models.filter(m => m.isNew).length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-gray-300 mb-2">
+                    🆕 Modèles récemment ajoutés:
+                  </p>
+                  <div className="bg-gray-700 rounded-lg p-3 max-h-48 overflow-y-auto">
+                    <div className="space-y-2">
+                      {models.filter(m => m.isNew).slice(0, 10).map(model => {
+                        const categoryIcons: Record<string, string> = {
+                          general: '🌐',
+                          coding: '💻',
+                          vision: '👁️',
+                          creative: '🎨',
+                          reasoning: '🧠',
+                          research: '🔬',
+                        };
+                        return (
+                          <div key={model.id} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="text-base">{categoryIcons[model.category || 'general']}</span>
+                              <span className="text-white font-medium truncate">{model.name}</span>
+                              <span className="px-2 py-0.5 bg-green-900/40 text-green-300 rounded text-xs font-bold border border-green-600/30 flex-shrink-0">
+                                NEW
+                              </span>
+                            </div>
+                            <span className="text-gray-400 text-xs flex-shrink-0 ml-2">
+                              {(model.contextLength / 1000).toFixed(0)}k ctx
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {models.filter(m => m.isNew).length > 10 && (
+                        <p className="text-xs text-gray-400 text-center pt-1">
+                          ... et {models.filter(m => m.isNew).length - 10} autres nouveaux modèles
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

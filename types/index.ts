@@ -39,6 +39,7 @@ export interface AIModel {
   promptPrice?: number;
   completionPrice?: number;
   category?: 'general' | 'coding' | 'vision' | 'creative' | 'reasoning' | 'research'; // Catégorie du modèle
+  isNew?: boolean; // Badge "NEW" pour les modèles récemment ajoutés lors de la synchronisation
   features: {
     streaming?: boolean;
     rag?: boolean;
