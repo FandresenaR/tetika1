@@ -17,6 +17,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Logging des modèles supprimés dans la console
   - Détection des nouveaux modèles avec timestamp
 
+- **Bouton "Actualiser" dans le sélecteur de modèles**
+  - Bouton 🔄 "Actualiser" directement dans "Choisir un modèle"
+  - Vide le cache localStorage et recharge depuis OpenRouter
+  - Animation de chargement pendant la synchronisation
+  - Accessible sans ouvrir les Paramètres
+  - Design responsive et adapté au thème dark/light
+
+#### Corrigé
+
+- **BUG CRITIQUE: ModelSelector utilisait une liste statique au lieu de la synchronisation OpenRouter**
+  - Problème: Les modèles obsolètes (LearnLM, DeepSeek, etc.) apparaissaient même après avoir vidé le cache
+  - Cause: ModelSelector utilisait `getAllModels()` (liste statique de ~100 modèles) au lieu de `useOpenRouterModels()` (liste dynamique de 52 modèles gratuits)
+  - Solution: Migration de ModelSelector vers `useOpenRouterModels()` pour synchronisation en temps réel
+  - Impact: Le sélecteur de modèles affiche maintenant exactement les mêmes modèles que l'onglet Paramètres
+  - Résultat: Les modèles obsolètes disparaissent immédiatement après actualisation
+
 - **Gestion améliorée des erreurs HTTP**
   - Status codes appropriés selon le type d'erreur (429, 404, 401, 403)
   - Messages d'erreur plus clairs pour l'utilisateur
@@ -42,6 +58,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Bouton "Actualiser" vide maintenant le localStorage (`tetika-free-models`)
   - Supprime également le timestamp de sync pour forcer un refresh complet
   - Meilleur feedback visuel avec icône de confirmation
+
+- **`components/chat/ModelSelector.tsx`** (REFACTORING MAJEUR)
+  - **Migration vers synchronisation dynamique**: Remplacé `getAllModels()` (statique) par `useOpenRouterModels()` (dynamique)
+  - Utilise désormais la même source de données que SettingsModal
+  - Fallback sur la liste statique si OpenRouter n'est pas disponible
+  - Ajout de l'import `FiRefreshCw` (icône de rechargement)
+  - État `isLoading` du hook utilisé pour l'animation du bouton
+  - Fonction `handleRefreshModels()` simplifiée - délègue au hook
+  - Bouton intégré dans la barre de recherche
+  - Layout flex avec gap pour un alignement optimal
+  - Tooltip explicatif: "Actualiser la liste des modèles depuis OpenRouter"
+  - Type `any` utilisé temporairement pour compatibilité entre les deux structures (à améliorer)
 
 - **`app/api/chat/route.ts`**
   - Retourne des status codes HTTP appropriés selon le type d'erreur :

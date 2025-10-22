@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { FiRefreshCw } from 'react-icons/fi';
 import { AIModel } from '@/types';
 import { getAllModels, getAvailableCategories } from '@/lib/models';
 import { isModelNew } from '@/lib/services/openRouterSync';
+import { useOpenRouterModels } from '@/lib/hooks/useOpenRouterModels';
 
 interface ModelSelectorProps {
   selectedModelId?: string;
@@ -26,8 +28,34 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const [showOnlyNew, setShowOnlyNew] = useState(false);
   const [showOnlyMultimodal, setShowOnlyMultimodal] = useState(false);
   
-  const allModels = getAllModels();
+  // Utiliser le hook pour charger les modèles depuis OpenRouter
+  const { 
+    models: openRouterModels, 
+    isLoading, 
+    refreshModels 
+  } = useOpenRouterModels();
+  
+  // Obtenir les modèles statiques comme fallback
+  const staticModels = getAllModels();
   const availableCategories = getAvailableCategories();
+  
+  // Utiliser les modèles OpenRouter s'ils sont disponibles, sinon fallback sur statiques
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allModels: any[] = openRouterModels.length > 0 ? openRouterModels : staticModels;
+  
+  // Fonction pour actualiser les modèles
+  const handleRefreshModels = async () => {
+    try {
+      // Vider le cache localStorage
+      localStorage.removeItem('tetika-free-models');
+      localStorage.removeItem('tetika-models-last-sync');
+      
+      // Utiliser le hook pour rafraîchir
+      await refreshModels();
+    } catch (error) {
+      console.error('Erreur lors de l\'actualisation:', error);
+    }
+  };
   
   // Déterminer quelle prop utiliser pour le modèle sélectionné
   const effectiveSelectedModelId = selectedModelId || currentModel || '';
@@ -50,7 +78,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     // Filtre par terme de recherche
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(model => 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filtered = filtered.filter((model: any) => 
         model.name.toLowerCase().includes(term) || 
         model.description.toLowerCase().includes(term)
       );
@@ -58,17 +87,20 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     
     // Filtre par catégorie si activé
     if (categoryFilter) {
-      filtered = filtered.filter(model => model.category === categoryFilter);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filtered = filtered.filter((model: any) => model.category === categoryFilter);
     }
     
     // Filtre "Nouveau" - modèles ajoutés il y a moins de 3 mois
     if (showOnlyNew) {
-      filtered = filtered.filter(model => isModelNew(model.isNew));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filtered = filtered.filter((model: any) => isModelNew(model.isNew));
     }
     
     // Filtre "Multimodal" - modèles avec vision
     if (showOnlyMultimodal) {
-      filtered = filtered.filter(model => model.features.rag && model.category === 'vision');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filtered = filtered.filter((model: any) => model.features?.rag && model.category === 'vision');
     }
     
     return filtered;
@@ -173,26 +205,45 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         ) : null;
       })()}
       
-      {/* Barre de recherche */}
+      {/* Barre de recherche et bouton actualiser */}
       <div className="mb-4">
-        <div className={`flex items-center border rounded-lg overflow-hidden ${theme === 'dark' ? 'border-gray-700' : 'border-gray-300'}`}>
-          <input
-            type="text"
-            placeholder="Rechercher un modèle..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className={`w-full py-2 px-3 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all duration-200 ${inputBgClass}`}
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => setSearchTerm('')}
-              className={`px-2 ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'} transition-colors`}
-              aria-label="Effacer la recherche"
-            >
-              &times;
-            </button>
-          )}
+        <div className="flex gap-2">
+          <div className={`flex items-center border rounded-lg overflow-hidden flex-1 ${theme === 'dark' ? 'border-gray-700' : 'border-gray-300'}`}>
+            <input
+              type="text"
+              placeholder="Rechercher un modèle..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className={`w-full py-2 px-3 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all duration-200 ${inputBgClass}`}
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className={`px-2 ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'} transition-colors`}
+                aria-label="Effacer la recherche"
+              >
+                &times;
+              </button>
+            )}
+          </div>
+          
+          {/* Bouton Actualiser */}
+          <button
+            onClick={handleRefreshModels}
+            disabled={isLoading}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 whitespace-nowrap ${
+              theme === 'dark'
+                ? 'bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-700 text-white'
+                : 'bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white'
+            } disabled:cursor-not-allowed`}
+            title="Actualiser la liste des modèles depuis OpenRouter"
+          >
+            <FiRefreshCw className={`${isLoading ? 'animate-spin' : ''}`} size={16} />
+            <span className="text-sm font-medium">
+              {isLoading ? 'Actualisation...' : 'Actualiser'}
+            </span>
+          </button>
         </div>
       </div>
       
