@@ -222,12 +222,23 @@ Si tu as les informations nécessaires, ignore cette instruction et réponds nor
           const systemMessage: Message & { content: string | ContentPart[] } = {
             id: generateId(),
             role: 'system',
-            content: `I'm providing you with recent web search results related to the user's query. 
-Please incorporate this information in your response and cite sources when appropriate using [1], [2], etc.
-${autoActivatedRAG ? "\nImportant: J'ai automatiquement activé la recherche web car il semblait que tu pourrais ne pas avoir les informations les plus à jour sur ce sujet. Mentionne cela brièvement au début de ta réponse." : ""}
+            content: `**INSTRUCTIONS IMPÉRATIVES - VOUS DEVEZ UTILISER CES INFORMATIONS**
 
-Web search results:
-${ragContext}`,
+Vous disposez des résultats de recherche web les plus récents pour répondre à la question de l'utilisateur.
+VOUS DEVEZ ABSOLUMENT utiliser ces informations dans votre réponse. Ne dites JAMAIS que vous n'avez pas d'informations.
+
+${autoActivatedRAG ? "⚠️ IMPORTANT: La recherche web a été automatiquement activée car la question concerne des informations récentes ou actuelles. Mentionnez-le brièvement au début de votre réponse.\n\n" : ""}**📰 RÉSULTATS DE RECHERCHE WEB (À UTILISER OBLIGATOIREMENT) :**
+
+${ragContext}
+
+**RÈGLES À SUIVRE STRICTEMENT :**
+1. ✅ UTILISEZ les informations ci-dessus pour construire votre réponse
+2. ✅ Citez les sources en utilisant [1], [2], etc.
+3. ✅ Synthétisez les informations de manière claire et précise
+4. ❌ NE DITES JAMAIS que vous n'avez pas d'informations
+5. ❌ NE REDIRIGEZ PAS l'utilisateur vers d'autres sources - vous avez déjà les informations nécessaires
+
+Répondez maintenant en français en utilisant ces résultats de recherche.`,
             timestamp: Date.now(),
             mode: 'rag' as ChatMode
           };
