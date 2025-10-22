@@ -33,7 +33,18 @@ export default function TradingChat({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: `👋 Bonjour ! Je suis votre assistant de trading IA. Je peux vous aider à analyser les marchés, interpréter les indicateurs techniques, et répondre à vos questions sur **${selectedAsset}**.\n\nN'hésitez pas à me poser des questions !`,
+      content: `👋 Bonjour ! Je suis votre assistant de trading IA **avec capacités autonomes**.
+
+Je peux :
+🔍 Rechercher des actualités en temps réel
+📊 Analyser des tendances de marché
+🔎 Trouver des symboles boursiers
+💹 Obtenir des données de marché
+📈 Calculer des indicateurs techniques
+
+Actuellement analysé : **${selectedAsset}**
+
+Posez-moi n'importe quelle question, je ferai les recherches nécessaires automatiquement !`,
       timestamp: new Date()
     }
   ]);
@@ -84,7 +95,7 @@ ${newsData.slice(0, 3).map((news, i) => `${i + 1}. ${news.title}`).join('\n')}
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'chatAnalysis',
+          action: 'smartChat', // Utiliser le mode intelligent avec actions autonomes
           symbol: selectedAsset,
           message: inputMessage,
           context: tradingContext,
@@ -95,9 +106,14 @@ ${newsData.slice(0, 3).map((news, i) => `${i + 1}. ${news.title}`).join('\n')}
 
       const data = await response.json();
 
+      // Afficher si l'IA a utilisé des outils
+      const responseContent = data.usedTools 
+        ? `${data.response}\n\n🤖 _J'ai effectué ${data.toolsExecuted} recherche(s) pour vous répondre._`
+        : data.response || 'Désolé, je n\'ai pas pu générer de réponse.';
+
       const assistantMessage: Message = {
         role: 'assistant',
-        content: data.response || 'Désolé, je n\'ai pas pu générer de réponse.',
+        content: responseContent,
         timestamp: new Date()
       };
 

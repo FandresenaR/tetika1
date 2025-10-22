@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { finnhubService } from '@/lib/services/finnhubService';
 import { alphaVantageService } from '@/lib/services/alphaVantageService';
+import { tradingAgent } from '@/lib/services/tradingAgentActions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -244,6 +245,179 @@ Réponds de manière concise, professionnelle et actionnable. Utilise des émoji
           return NextResponse.json({
             response: `❌ Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
             error: true
+          });
+        }
+      }
+
+      case 'smartChat': {
+        // Chat intelligent avec capacité d'effectuer des actions autonomes
+        const { message, context, history } = body;
+        
+        try {
+          const openRouterKey = process.env.OPENROUTER_API_KEY || 
+                                process.env.NEXT_PUBLIC_OPENROUTER_KEY || 
+                                request.headers.get('x-openrouter-key') || '';
+
+          if (!openRouterKey) {
+            throw new Error('Clé OpenRouter manquante');
+          }
+
+          // Première étape : Déterminer si l'IA doit effectuer des actions
+          const analysisSystemPrompt = `Tu es un assistant de trading IA expert avec accès à plusieurs outils.
+
+OUTILS DISPONIBLES:
+1. search_news - Rechercher des actualités récentes sur un actif
+2. search_analysis - Rechercher des analyses d'experts
+3. search_trends - Rechercher des tendances de marché générales
+4. search_symbol - Trouver le symbole d'une action par nom de société
+5. get_market_data - Obtenir des données de marché en temps réel
+6. get_technical_indicators - Calculer des indicateurs techniques
+
+Contexte actuel:
+${context}
+
+Si la question de l'utilisateur nécessite des informations à jour ou une recherche web, tu DOIS utiliser les outils.
+
+Analyse la question suivante et décide si tu as besoin d'utiliser des outils.
+
+Format de réponse:
+Si tu as besoin d'outils: {"needs_tools": true, "tools": [{"type": "search_news", "params": {"symbol": "GLD", "assetName": "Gold"}}]}
+Si tu peux répondre directement: {"needs_tools": false, "response": "Ta réponse ici"}
+
+Question: ${message}`;
+
+          // Premier appel : Déterminer les actions
+          const analysisResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openRouterKey}`,
+              'HTTP-Referer': 'https://tetika.app',
+              'X-Title': 'Tetika AI Trader'
+            },
+            body: JSON.stringify({
+              model: modelId || 'mistralai/mistral-7b-instruct:free',
+              messages: [
+                { role: 'system', content: analysisSystemPrompt },
+                { role: 'user', content: message }
+              ],
+              temperature: 0.3,
+              max_tokens: 500
+            })
+          });
+
+          if (!analysisResponse.ok) {
+            throw new Error(`OpenRouter API error: ${analysisResponse.status}`);
+          }
+
+          const analysisData = await analysisResponse.json();
+          const analysisText = analysisData.choices?.[0]?.message?.content || '{}';
+
+          // Parser la réponse pour voir si des outils sont nécessaires
+          let needsTools = false;
+          let toolsToExecute = [];
+          let directResponse = '';
+
+          try {
+            const parsed = JSON.parse(analysisText);
+            needsTools = parsed.needs_tools || false;
+            toolsToExecute = parsed.tools || [];
+            directResponse = parsed.response || '';
+          } catch {
+            // Si parsing échoue, répondre directement
+            needsTools = false;
+            directResponse = analysisText;
+          }
+
+          let toolResults = '';
+
+          // Exécuter les outils si nécessaire
+          if (needsTools && toolsToExecute.length > 0) {
+            console.log('[Trading API] 🤖 Exécution d\'actions autonomes:', toolsToExecute);
+            
+            const results = await Promise.all(
+              toolsToExecute.map((tool: any) => tradingAgent.executeAction(tool.type, tool.params))
+            );
+
+            toolResults = results.map((result, index) => {
+              if (result.success) {
+                return `\n\n📊 Résultat ${index + 1} (${result.actionType}):\n${JSON.stringify(result.data, null, 2)}`;
+              } else {
+                return `\n\n❌ Erreur ${index + 1} (${result.actionType}): ${result.error}`;
+              }
+            }).join('');
+          }
+
+          // Deuxième appel : Générer la réponse finale avec les résultats des outils
+          const finalSystemPrompt = `Tu es un assistant de trading IA expert. 
+
+Contexte actuel:
+${context}
+
+${toolResults ? `Résultats des recherches et analyses:\n${toolResults}` : ''}
+
+Utilise ces informations pour répondre de manière professionnelle et actionnable. Utilise des émojis pour améliorer la lisibilité.`;
+
+          const conversationMessages = [
+            { role: 'system', content: finalSystemPrompt },
+            ...(history || []).slice(-4).map((msg: { role: string; content: string }) => ({
+              role: msg.role,
+              content: msg.content
+            })),
+            { role: 'user', content: message }
+          ];
+
+          const finalResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openRouterKey}`,
+              'HTTP-Referer': 'https://tetika.app',
+              'X-Title': 'Tetika AI Trader'
+            },
+            body: JSON.stringify({
+              model: modelId || 'mistralai/mistral-7b-instruct:free',
+              messages: conversationMessages,
+              temperature: 0.7,
+              max_tokens: 1000
+            })
+          });
+
+          if (!finalResponse.ok) {
+            throw new Error(`OpenRouter API error: ${finalResponse.status}`);
+          }
+
+          const finalData = await finalResponse.json();
+          const responseText = finalData.choices?.[0]?.message?.content || 'Désolé, je ne peux pas répondre pour le moment.';
+
+          return NextResponse.json({
+            response: responseText,
+            model: modelId,
+            timestamp: Date.now(),
+            usedTools: needsTools,
+            toolsExecuted: toolsToExecute.length
+          });
+        } catch (error) {
+          console.error('[Trading API] Erreur smart chat:', error);
+          return NextResponse.json({
+            response: `❌ Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+            error: true
+          });
+        }
+      }
+
+      case 'executeAction': {
+        // Endpoint pour exécuter une action spécifique
+        const { actionType, params } = body;
+        
+        try {
+          const result = await tradingAgent.executeAction(actionType, params);
+          return NextResponse.json(result);
+        } catch (error) {
+          return NextResponse.json({
+            success: false,
+            actionType: actionType || 'unknown',
+            error: error instanceof Error ? error.message : 'Erreur inconnue'
           });
         }
       }
