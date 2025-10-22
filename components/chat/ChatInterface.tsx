@@ -1052,7 +1052,7 @@ The complete extraction process, AI analysis, and raw data are available in the 
       
       if (!modelObject) {
         console.error('Modèle non trouvé:', modelId);
-        console.log('Modèles disponibles (dynamiques):', openRouterDynamicModels.map((m: any) => m.id));
+        console.log('Modèles disponibles (dynamiques):', openRouterDynamicModels.map((m: { id: string }) => m.id));
         console.log('Modèles disponibles (statiques):', openRouterModels.map(m => m.id));
         throw new Error(`Modèle non trouvé: "${modelId}". Veuillez sélectionner un modèle valide dans la liste.`);
       }

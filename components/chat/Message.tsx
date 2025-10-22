@@ -490,11 +490,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
     }
 
-    // Helper function to truncate long source titles
-    const truncateTitle = (title: string, maxLength: number = 60): string => {
-      if (title.length <= maxLength) return title;
-      return title.substring(0, maxLength) + '...';
-    };    // For RAG mode with sources, we need to carefully process the content while preserving code blocks
+    // For RAG mode with sources, we need to carefully process the content while preserving code blocks
     // First, let's check if there are code blocks and handle them specially
     const hasCodeBlocks = message.content.includes('```');
     
@@ -580,41 +576,6 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       
       return onlyRefRegex.test(line) || sourceHeaderRegex.test(line) || 
              (urlRegex.test(line) && line.length < 300) || numberedSourceRegex.test(line);
-    };    const createReferenceElement = (refNumber: string, index: number) => {
-      const numRef = parseInt(refNumber, 10);
-      if (numRef > 0 && numRef <= (message.sources?.length || 0)) {
-        const source = message.sources?.[numRef - 1];
-        if (!source) return <span key={`plain-${index}`}>{`[${refNumber}]`}</span>;
-        
-        const url = getSourceUrl(source);
-        const fullTitle = source.title || url || 'Source';
-        
-        // Tronquer le titre pour l'affichage (max 40 caractères)
-        const displayTitle = fullTitle.length > 40 
-          ? fullTitle.substring(0, 40) + '...' 
-          : fullTitle;
-
-        return (
-          <span 
-            key={`ref-${index}`}
-            className={`inline-flex items-center justify-center rounded-md px-2 py-1 
-              font-medium cursor-pointer transition-all duration-300 mx-1 text-xs
-              ${theme === 'dark' 
-                ? 'bg-blue-600/80 text-white hover:bg-blue-500/90' 
-                : 'bg-blue-400 text-black hover:bg-blue-300'}`}
-            onClick={() => {
-              if (url && url !== '#') {
-                window.open(url, '_blank', 'noopener,noreferrer');
-              }
-            }}
-            title={fullTitle}
-          >
-            {displayTitle}
-          </span>
-        );
-      }
-
-      return <span key={`plain-${index}`}>{`[${refNumber}]`}</span>;
     };
 
     // Filtrer les lignes de sources avant de traiter le contenu
@@ -644,7 +605,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
     // Composants Markdown personnalisés
     const MarkdownComponentsWithRefs = {
       ...MarkdownComponents,
-      text: TextWithRefs as any,
+      text: TextWithRefs as React.FC<{ children?: React.ReactNode }>,
     };
 
     return (
