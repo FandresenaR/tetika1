@@ -10,6 +10,7 @@ import SpeechSynthesisCheck from '@/components/ui/SpeechSynthesisCheck';
 import SettingsButton from '@/components/ui/SettingsButton';
 import { Message, ChatMode, ChatSession } from '@/types';
 import { openRouterModels, getModelById } from '@/lib/models';
+import { useOpenRouterModels } from '@/lib/hooks/useOpenRouterModels';
 import { isImageFile, isVideoFile, createMediaDescription, createImageContentWithBase64 } from '@/lib/media-utils';
 import { DEFAULT_RAG_PROVIDER } from '@/lib/rag-providers';
 import { useChatMessages } from '@/lib/hooks/useChatMessages';
@@ -52,6 +53,22 @@ const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2
 const ChatInterface: React.FC = () => {
   // Use the first available OpenRouter model as the default
   const defaultModelId = openRouterModels.length > 0 ? openRouterModels[0].id : "mistralai/mistral-7b-instruct:free";
+  
+  // Charger les modèles depuis OpenRouter
+  const { models: openRouterDynamicModels } = useOpenRouterModels();
+  
+  // Fonction pour récupérer un modèle par ID depuis les deux sources
+  const getModelByIdFromAllSources = useCallback((id: string) => {
+    // D'abord chercher dans les modèles dynamiques OpenRouter
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dynamicModel = openRouterDynamicModels.find((m: any) => m.id === id);
+    if (dynamicModel) {
+      return dynamicModel;
+    }
+    
+    // Sinon, fallback sur la liste statique
+    return getModelById(id);
+  }, [openRouterDynamicModels]);
   
   // Utiliser le hook personnalisé pour gérer les messages de manière robuste
   const {
@@ -1030,11 +1047,14 @@ The complete extraction process, AI analysis, and raw data are available in the 
     // PAS de message assistant temporaire - on attend la vraie réponse
     
     try {
-      // Récupérer l'objet modèle complet
-      const modelObject = getModelById(modelId);
+      // Récupérer l'objet modèle complet depuis les deux sources (dynamique + statique)
+      const modelObject = getModelByIdFromAllSources(modelId);
       
       if (!modelObject) {
-        throw new Error('Modèle non trouvé. Veuillez sélectionner un modèle valide.');
+        console.error('Modèle non trouvé:', modelId);
+        console.log('Modèles disponibles (dynamiques):', openRouterDynamicModels.map((m: any) => m.id));
+        console.log('Modèles disponibles (statiques):', openRouterModels.map(m => m.id));
+        throw new Error(`Modèle non trouvé: "${modelId}". Veuillez sélectionner un modèle valide dans la liste.`);
       }
       
       // Préparer les messages pour l'API
@@ -1459,7 +1479,7 @@ The complete extraction process, AI analysis, and raw data are available in the 
     : 'text-gray-500';
   
   // Get display name for the current model
-  const currentModelName = getModelById(modelId)?.name || modelId;
+  const currentModelName = getModelByIdFromAllSources(modelId)?.name || modelId;
   
   return (
     <CodeSidebarContext.Provider value={{ 
