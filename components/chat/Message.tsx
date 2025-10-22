@@ -4,6 +4,7 @@ import { Message as MessageType } from '@/types';
 import { speakText, stopSpeech, detectLanguage } from '@/lib/speech-utils';
 import { SmartRAGSuggestions } from '@/components/ui/SmartRAGSuggestions';
 import { getModelById } from '@/lib/models';
+import { TableRenderer, extractMarkdownTables } from './TableRenderer';
 
 // Define the code sidebar context type
 interface CodeSidebarContextType {
@@ -428,6 +429,62 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       return <p className="text-sm opacity-70">(Message vide)</p>;
     }
 
+    // Détecter et extraire les tableaux Markdown
+    const { tables, positions } = extractMarkdownTables(message.content);
+    
+    // Si des tableaux sont détectés, on les affiche séparément
+    if (tables.length > 0) {
+      const segments: React.ReactNode[] = [];
+      let lastIndex = 0;
+      
+      positions.forEach((pos, index) => {
+        // Ajouter le contenu avant le tableau
+        if (pos.start > lastIndex) {
+          const beforeTable = message.content.substring(lastIndex, pos.start);
+          if (beforeTable.trim()) {
+            segments.push(
+              <ReactMarkdown 
+                key={`text-before-${index}`} 
+                remarkPlugins={[]} 
+                components={MarkdownComponents as Components}
+              >
+                {beforeTable}
+              </ReactMarkdown>
+            );
+          }
+        }
+        
+        // Ajouter le tableau
+        segments.push(
+          <TableRenderer 
+            key={`table-${index}`} 
+            content={tables[index]} 
+            theme={theme}
+          />
+        );
+        
+        lastIndex = pos.end;
+      });
+      
+      // Ajouter le contenu après le dernier tableau
+      if (lastIndex < message.content.length) {
+        const afterTables = message.content.substring(lastIndex);
+        if (afterTables.trim()) {
+          segments.push(
+            <ReactMarkdown 
+              key="text-after" 
+              remarkPlugins={[]} 
+              components={MarkdownComponents as Components}
+            >
+              {afterTables}
+            </ReactMarkdown>
+          );
+        }
+      }
+      
+      return <>{segments}</>;
+    }
+    
     // If no sources, use normal ReactMarkdown which will handle code blocks properly
     if (!message.sources || message.sources.length === 0) {
       return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;

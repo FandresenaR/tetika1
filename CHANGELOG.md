@@ -5,6 +5,112 @@ Tous les changements notables apportés au projet Tetika seront documentés dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2025-10-22
+
+### 📊 Tableaux Markdown avec Export Excel/Sheets
+
+#### Ajouté
+
+- **Composant TableRenderer** (`components/chat/TableRenderer.tsx`)
+  - Détection automatique des tableaux Markdown dans les réponses IA
+  - Parsing des tableaux avec headers, alignement et données
+  - Fonction `extractMarkdownTables()` pour extraire les tableaux du contenu
+  - Fonction `parseMarkdownTable()` pour parser la structure
+
+- **Bouton "Copier" pour Excel/Google Sheets**
+  - Export au format TSV (Tab-Separated Values)
+  - Fonction `tableToTSV()` pour conversion optimale
+  - Copie vers le presse-papier compatible avec Excel et Google Sheets
+  - Feedback visuel : Icône ✓ "Copié!" pendant 2 secondes
+  - Fallback pour les navigateurs sans support clipboard API
+
+- **Bouton "Télécharger"**
+  - Export TSV ou CSV au choix
+  - Fonction `tableToCSV()` avec échappement des caractères spéciaux
+  - Téléchargement direct du fichier (table.tsv ou table.csv)
+  - Compatible avec tous les tableurs
+
+- **Mise en forme professionnelle des tableaux**
+  - Header avec fond contrasté et texte en couleur accent (cyan)
+  - Bordure inférieure épaisse sur les headers
+  - Lignes alternées (zebra striping) pour meilleure lisibilité
+  - Effet hover sur les lignes
+  - Respect de l'alignement Markdown (left, center, right)
+  - Design responsive avec scroll horizontal si nécessaire
+  - Thème dark/light adaptatif
+
+- **Statistiques du tableau**
+  - Affichage du nombre de colonnes × lignes
+  - Footer avec instructions de copie
+  - Icône 📊 pour identification visuelle
+
+#### Modifié
+
+- **Message.tsx**
+  - Intégration de `extractMarkdownTables()` dans le rendu
+  - Détection et remplacement automatique des tableaux Markdown
+  - Segmentation du contenu (avant tableau, tableau, après tableau)
+  - Support des tableaux multiples dans une même réponse
+  - Préservation du formatage ReactMarkdown pour le reste du contenu
+
+#### Technique
+
+**Détection de tableaux** :
+- Regex pour lignes avec pipes `|`
+- Validation du séparateur (ligne 2 avec `---`, `:---`, `---:`, `:---:`)
+- Extraction des positions pour segmentation précise
+
+**Format TSV** :
+- Séparateur Tab (`\t`) au lieu de virgules
+- Pas d'échappement nécessaire (plus fiable qu'CSV)
+- Reconnu nativement par Excel et Google Sheets
+- Collage direct = tableau formaté automatiquement
+
+**Format CSV** :
+- Échappement des virgules, guillemets et retours à la ligne
+- Guillemets doubles pour les valeurs avec caractères spéciaux
+- Alternative au TSV pour compatibilité maximale
+
+**Performance** :
+- Parsing en O(n) où n = nombre de lignes
+- Extraction avec positions précises pour éviter les re-renders
+- Composants React.memo pour optimisation
+
+#### Interface Utilisateur
+
+```
+┌─────────────────────────────────────────────────┐
+│ 📊 Tableau (3 colonnes × 3 lignes)             │
+│                      [Copier] [Télécharger TSV] │
+├─────────────────────────────────────────────────┤
+│ Caractéristique │      Moi      │   ChatGPT     │
+├─────────────────────────────────────────────────┤
+│ Données privées │ Acceptées...  │ Non           │
+│ Mises à jour    │ Plus fréqu... │ Dépend de...  │
+│ Tonalité        │ Plus positif  │ Plus neutre   │
+├─────────────────────────────────────────────────┤
+│ 💡 Cliquez sur "Copier" puis collez dans Excel │
+└─────────────────────────────────────────────────┘
+```
+
+**Exemple de tableau supporté** :
+```markdown
+| Caractéristique | Moi | ChatGPT |
+|---------------------|---------|------------|
+| Données privées | Acceptées | Non |
+| Mises à jour | Plus fréquentes | Dépend |
+| Tonalité | Plus positif | Plus neutre |
+```
+
+#### Avantages
+
+- ✅ **Copier-coller direct** : Un clic → coller dans Excel = tableau formaté
+- ✅ **Format TSV** : Pas de problème d'échappement, reconnu nativement
+- ✅ **Responsive** : Scroll horizontal sur petits écrans
+- ✅ **Accessible** : Thème dark/light, contrastes adaptés
+- ✅ **Multi-tableaux** : Support de plusieurs tableaux dans une réponse
+- ✅ **Alignement préservé** : `:---`, `---:`, `:---:` respectés
+
 ## [0.6.1] - 2025-10-22
 
 ### 🔍 Filtres "Nouveau" et "Multimodal" dans le Sélecteur de Modèles
