@@ -488,7 +488,13 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
     // If no sources, use normal ReactMarkdown which will handle code blocks properly
     if (!message.sources || message.sources.length === 0) {
       return <ReactMarkdown remarkPlugins={[]} components={MarkdownComponents as Components}>{message.content}</ReactMarkdown>;
-    }    // For RAG mode with sources, we need to carefully process the content while preserving code blocks
+    }
+
+    // Helper function to truncate long source titles
+    const truncateTitle = (title: string, maxLength: number = 60): string => {
+      if (title.length <= maxLength) return title;
+      return title.substring(0, maxLength) + '...';
+    };    // For RAG mode with sources, we need to carefully process the content while preserving code blocks
     // First, let's check if there are code blocks and handle them specially
     const hasCodeBlocks = message.content.includes('```');
     
@@ -567,8 +573,13 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       const onlyRefRegex = /^\s*\[(\d+)\]\s*$|^\s*\((\d+)\)\s*$|^\s*(\d+)⃣\s*$|^\s*(\d+)️⃣\s*$/;
       // Check if the line starts with "Source:", "Sources:", etc.
       const sourceHeaderRegex = /^\s*sources?\s*:/i;
+      // Check if the line contains a URL (likely a source citation)
+      const urlRegex = /https?:\/\//;
+      // Check if the line starts with a number followed by a dot and contains a URL or title pattern
+      const numberedSourceRegex = /^\s*\d+\.\s*.*(https?:\/\/|[\[\(])/;
       
-      return onlyRefRegex.test(line) || sourceHeaderRegex.test(line);
+      return onlyRefRegex.test(line) || sourceHeaderRegex.test(line) || 
+             (urlRegex.test(line) && line.length < 300) || numberedSourceRegex.test(line);
     };    const createReferenceElement = (refNumber: string, index: number) => {
       const numRef = parseInt(refNumber, 10);
       if (numRef > 0 && numRef <= (message.sources?.length || 0)) {
@@ -576,12 +587,18 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
         if (!source) return <span key={`plain-${index}`}>{`[${refNumber}]`}</span>;
         
         const url = getSourceUrl(source);
+        const fullTitle = source.title || url || 'Source';
+        
+        // Tronquer le titre pour l'affichage (max 40 caractères)
+        const displayTitle = fullTitle.length > 40 
+          ? fullTitle.substring(0, 40) + '...' 
+          : fullTitle;
 
         return (
           <span 
             key={`ref-${index}`}
-            className={`inline-flex items-center justify-center rounded-full min-w-[1.5rem] h-6 px-1 
-              font-medium cursor-pointer transition-all duration-300 mx-0.5
+            className={`inline-flex items-center justify-center rounded-md px-2 py-1 
+              font-medium cursor-pointer transition-all duration-300 mx-1 text-xs
               ${theme === 'dark' 
                 ? 'bg-blue-600/80 text-white hover:bg-blue-500/90' 
                 : 'bg-blue-400 text-black hover:bg-blue-300'}`}
@@ -590,9 +607,9 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                 window.open(url, '_blank', 'noopener,noreferrer');
               }
             }}
-            title={`Ouvrir la source ${numRef}`}
+            title={fullTitle}
           >
-            {`[${numRef}]`}
+            {displayTitle}
           </span>
         );
       }
@@ -600,89 +617,56 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
       return <span key={`plain-${index}`}>{`[${refNumber}]`}</span>;
     };
 
-    // For text content, we still need to handle source references
-    // but we need to be more careful about line-by-line processing
+    // Filtrer les lignes de sources avant de traiter le contenu
     const lines = content.split('\n');
-    const processedLines = lines.map((line, lineIndex) => {
-      // Skip source-only reference lines
-      if (isSourceReferenceLine(line)) {
-        return null;
+    const filteredLines = lines.filter(line => !isSourceReferenceLine(line));
+    
+    // Supprimer toutes les références [1], [2], etc. du contenu
+    const contentWithoutRefs = filteredLines.map(line => 
+      line.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, '')
+    ).join('\n');
+
+    // Fonction pour traiter le texte (plus besoin de remplacer les références puisqu'on les a supprimées)
+    const processTextWithReferences = (text: string): (string | React.ReactElement)[] => {
+      // Simplement retourner le texte sans traitement de références
+      return [text];
+    };
+
+    // Composant pour gérer le rendu du texte avec références
+    const TextWithRefs: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
+      if (typeof children === 'string') {
+        const parts = processTextWithReferences(children);
+        return <>{parts}</>;
       }
+      return <>{children}</>;
+    };
 
-      if (!line.trim()) {
-        return <br key={`br-${lineIndex}`} />;
-      }
+    // Composants Markdown personnalisés
+    const MarkdownComponentsWithRefs = {
+      ...MarkdownComponents,
+      text: TextWithRefs as any,
+    };
 
-      const cleanedLine = line.replace(/source\s*:/gi, '');
-
-      // Check for source references in this line
-      const refRegex = /\[(\d+)\]|\((\d+)\)|(\d+)⃣|(\d+)️⃣/g;
-      const refMatches: Array<{fullMatch: string; refNumber: string; index: number}> = [];
-      let match;
-
-      while ((match = refRegex.exec(cleanedLine)) !== null) {
-        refMatches.push({
-          fullMatch: match[0],
-          refNumber: match[1] || match[2] || match[3] || match[4],
-          index: match.index
-        });
-      }
-
-      if (refMatches.length === 0) {
-        // No references, just render the line as markdown
-        return (
-          <div key={`line-${lineIndex}`}>
-            <ReactMarkdown components={MarkdownComponents as Components}>
-              {cleanedLine}
-            </ReactMarkdown>
-          </div>
-        );
-      }
-
-      // Process the line with references
-      const elements: React.ReactElement[] = [];
-      let lastIndex = 0;
-
-      refMatches.forEach((match, matchIndex) => {
-        if (match.index > lastIndex) {
-          const textBefore = cleanedLine.substring(lastIndex, match.index);
-          if (textBefore.trim()) {
-            elements.push(
-              <ReactMarkdown key={`text-${lineIndex}-${matchIndex}`} components={MarkdownComponents as Components}>
-                {textBefore}
-              </ReactMarkdown>
-            );
-          }
-        }
-
-        elements.push(createReferenceElement(match.refNumber, lineIndex * 100 + matchIndex));
-
-        lastIndex = match.index + match.fullMatch.length;
-      });
-
-      if (lastIndex < cleanedLine.length) {
-        const remainingText = cleanedLine.substring(lastIndex);
-        if (remainingText.trim()) {
-          elements.push(
-            <ReactMarkdown key={`text-${lineIndex}-end`} components={MarkdownComponents as Components}>
-              {remainingText}
-            </ReactMarkdown>
-          );
-        }
-      }
-
-      return (
-        <div key={`line-wrapped-${lineIndex}`} className="markdown-line">
-          {elements}
-        </div>
-      );
-    })
-    .filter(line => line !== null);
-
-    return <div className="prose-content">{processedLines}</div>;
+    return (
+      <div className="prose-content">
+        <ReactMarkdown components={MarkdownComponentsWithRefs as Components}>
+          {contentWithoutRefs}
+        </ReactMarkdown>
+      </div>
+    );
   };
 
   const MarkdownComponents = {
+    // Composant personnalisé pour supprimer les références du texte
+    text: ({ children }: { children?: React.ReactNode }) => {
+      if (typeof children !== 'string') return <>{children}</>;
+      
+      // Supprimer toutes les références [1], [2], [1, 2, 3], etc. du texte
+      const textWithoutRefs = children.replace(/\[(\d+(?:,\s*\d+)*)\]/g, '');
+      
+      return <>{textWithoutRefs}</>;
+    },
+
     p: ({ children, ...props }: PProps) => {
       // Vérifier si le paragraphe contient des éléments non autorisés comme div ou pre
       // Si oui, utiliser un div à la place d'un p pour éviter les erreurs d'hydratation      // Enhanced check for block elements to prevent hydration errors
@@ -1117,7 +1101,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
               >                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m-1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                {showSources ? "Masquer les sources" : "Afficher les sources"}
+                {showSources ? "Masquer les sources" : `Afficher les sources (${message.sources?.length || 0})`}
                 {isAutoRAG && (
                   <span className="ml-1 opacity-80">(auto)</span>
                 )}
@@ -1136,44 +1120,52 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
                     </p>
                   )}
                   <ul className="space-y-1 ml-4">
-                    {message.sources && message.sources.map((source, index) => (
-                      <li key={index} className="flex items-center gap-1">
-                        <a 
-                          href={getSourceUrl(source)} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className={`${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'} underline`}
-                        >
-                          {source.title || getSourceUrl(source)}
-                        </a>
-                        <button 
-                          onClick={async () => {
-                            try {
-                              const sourceUrl = getSourceUrl(source);
-                              const success = await safeClipboardCopy(sourceUrl);
-                              if (success) {
-                                setCopiedIndex(index);
-                                setTimeout(() => setCopiedIndex(null), 2000);
+                    {message.sources && message.sources.map((source, index) => {
+                      const fullTitle = source.title || getSourceUrl(source);
+                      const truncatedTitle = fullTitle.length > 60 
+                        ? fullTitle.substring(0, 60) + '...' 
+                        : fullTitle;
+                      
+                      return (
+                        <li key={index} className="flex items-center gap-1">
+                          <a 
+                            href={getSourceUrl(source)} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className={`${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'} underline`}
+                            title={fullTitle}
+                          >
+                            {truncatedTitle}
+                          </a>
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const sourceUrl = getSourceUrl(source);
+                                const success = await safeClipboardCopy(sourceUrl);
+                                if (success) {
+                                  setCopiedIndex(index);
+                                  setTimeout(() => setCopiedIndex(null), 2000);
+                                }
+                              } catch (err) {
+                                console.error('Error copying source link:', err);
                               }
-                            } catch (err) {
-                              console.error('Error copying source link:', err);
-                            }
-                          }}
-                          className={`ml-1 p-0.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-200'} transition-colors`}
-                          title={copiedIndex === index ? "Copié !" : "Copier le lien"}
-                        >
-                          {copiedIndex === index ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 012 2h2a2 2 0 002-2M8 5a 2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                          )}
-                        </button>
-                      </li>
-                    ))}
+                            }}
+                            className={`ml-1 p-0.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-200'} transition-colors`}
+                            title={copiedIndex === index ? "Copié !" : "Copier le lien"}
+                          >
+                            {copiedIndex === index ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 012 2h2a2 2 0 002-2M8 5a 2 2 0 012-2h2a2 2 0 012 2" />
+                              </svg>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}            </div>
