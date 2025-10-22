@@ -12,8 +12,6 @@ export default function TraderPage() {
   const [marketData, setMarketData] = useState<{ price: string; change: string; volume: string; high: string; low: string } | null>(null);
   const [newsData, setNewsData] = useState<Array<{ title: string; snippet: string; datetime: number; sentiment?: string }>>([]);
   const [technicalIndicators, setTechnicalIndicators] = useState<{ rsi: string; macd: string; sma50: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState('mistralai/mistral-7b-instruct:free');
   
   const { models: dynamicModels } = useOpenRouterModels();
@@ -28,7 +26,6 @@ export default function TraderPage() {
   }, [selectedAsset]);
 
   const loadMarketData = async () => {
-    setLoading(true);
     try {
       const response = await fetch('/api/trading', {
         method: 'POST',
@@ -42,8 +39,6 @@ export default function TraderPage() {
       setMarketData(data);
     } catch (error) {
       console.error('Erreur lors du chargement des données de marché:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -78,30 +73,6 @@ export default function TraderPage() {
       setTechnicalIndicators(data);
     } catch (error) {
       console.error('Erreur lors du chargement des indicateurs techniques:', error);
-    }
-  };
-
-  const requestAIAnalysis = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/trading', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'aiAnalysis',
-          symbol: selectedAsset,
-          marketData,
-          newsData,
-          technicalIndicators,
-          modelId: selectedModel
-        })
-      });
-      const data = await response.json();
-      setAiAnalysis(data.analysis);
-    } catch (error) {
-      console.error('Erreur lors de l\'analyse IA:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -162,7 +133,7 @@ export default function TraderPage() {
           theme === 'dark' ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'
         } border`}>
           <p className={`text-sm ${theme === 'dark' ? 'text-blue-200' : 'text-blue-800'}`}>
-            ℹ️ <strong>Mode démo avec API gratuite :</strong> Utilisation d'ETFs US (GLD = Or, USO = Pétrole) 
+            ℹ️ <strong>Mode démo avec API gratuite :</strong> Utilisation d&apos;ETFs US (GLD = Or, USO = Pétrole) 
             au lieu de symboles Forex directs. Les ETFs suivent fidèlement les prix des matières premières.
           </p>
         </div>

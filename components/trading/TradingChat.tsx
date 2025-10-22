@@ -6,10 +6,10 @@ import ReactMarkdown from 'react-markdown';
 interface TradingChatProps {
   theme: 'dark' | 'light';
   selectedAsset: string;
-  marketData: any;
-  newsData: any[];
-  technicalIndicators: any;
-  models: any[];
+  marketData: { price: string; change: string; volume: string; high: string; low: string } | null;
+  newsData: Array<{ title: string; snippet: string; datetime: number; sentiment?: string }>;
+  technicalIndicators: { rsi: string; macd: string; sma50: string } | null;
+  models: Array<{ id: string; name: string; pricing?: { prompt: string } }>;
   selectedModel: string;
   onModelChange: (model: string) => void;
 }
@@ -157,11 +157,14 @@ ${newsData.slice(0, 3).map((news, i) => `${i + 1}. ${news.title}`).join('\n')}
           className={`w-full px-3 py-2 rounded-lg border text-sm ${inputClasses}`}
         >
           <option value="">Sélectionner un modèle</option>
-          {models.filter(m => m.id).map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name} {model.pricing?.prompt === '0' ? '(Gratuit)' : ''}
-            </option>
-          ))}
+          {models.filter(m => m.id).map((model) => {
+            const isFree = model.pricing?.prompt === '0';
+            return (
+              <option key={model.id} value={model.id}>
+                {model.name} {isFree ? '(Gratuit)' : ''}
+              </option>
+            );
+          })}
         </select>
       </div>
 
@@ -201,7 +204,7 @@ ${newsData.slice(0, 3).map((news, i) => `${i + 1}. ${news.title}`).join('\n')}
             <div className={`rounded-lg p-3 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <div className="flex items-center gap-2">
                 <div className="animate-spin h-4 w-4 border-2 border-yellow-500 border-t-transparent rounded-full" />
-                <span className="text-sm">L'assistant réfléchit...</span>
+                <span className="text-sm">L&apos;assistant réfléchit...</span>
               </div>
             </div>
           </div>

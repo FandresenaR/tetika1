@@ -315,18 +315,15 @@ Question: ${message}`;
 
           // Parser la réponse pour voir si des outils sont nécessaires
           let needsTools = false;
-          let toolsToExecute = [];
-          let directResponse = '';
+          let toolsToExecute: Array<{ type: string; params: Record<string, unknown> }> = [];
 
           try {
             const parsed = JSON.parse(analysisText);
             needsTools = parsed.needs_tools || false;
             toolsToExecute = parsed.tools || [];
-            directResponse = parsed.response || '';
           } catch {
             // Si parsing échoue, répondre directement
             needsTools = false;
-            directResponse = analysisText;
           }
 
           let toolResults = '';
@@ -336,7 +333,7 @@ Question: ${message}`;
             console.log('[Trading API] 🤖 Exécution d\'actions autonomes:', toolsToExecute);
             
             const results = await Promise.all(
-              toolsToExecute.map((tool: any) => tradingAgent.executeAction(tool.type, tool.params))
+              toolsToExecute.map((tool) => tradingAgent.executeAction(tool.type, tool.params))
             );
 
             toolResults = results.map((result, index) => {

@@ -6,11 +6,10 @@
 import { tradingSearchService } from './tradingSearchService';
 import { finnhubService } from './finnhubService';
 import { alphaVantageService } from './alphaVantageService';
-import { advancedTA } from './advancedTechnicalAnalysis';
 
 export interface ActionResult {
   success: boolean;
-  data?: any;
+  data?: Record<string, unknown>;
   error?: string;
   actionType: string;
 }
@@ -201,25 +200,25 @@ export class TradingAgentActions {
   /**
    * Exécuter une action en fonction du type
    */
-  async executeAction(actionType: string, params: any): Promise<ActionResult> {
+  async executeAction(actionType: string, params: Record<string, unknown>): Promise<ActionResult> {
     switch (actionType) {
       case 'search_news':
-        return this.searchNews(params.symbol, params.assetName);
+        return this.searchNews(params.symbol as string, params.assetName as string | undefined);
       
       case 'search_analysis':
-        return this.searchAnalysis(params.symbol);
+        return this.searchAnalysis(params.symbol as string);
       
       case 'search_trends':
-        return this.searchMarketTrends(params.query);
+        return this.searchMarketTrends(params.query as string);
       
       case 'search_symbol':
-        return this.searchSymbol(params.companyName);
+        return this.searchSymbol(params.companyName as string);
       
       case 'get_market_data':
-        return this.getMarketData(params.symbol);
+        return this.getMarketData(params.symbol as string);
       
       case 'get_technical_indicators':
-        return this.getTechnicalIndicators(params.symbol);
+        return this.getTechnicalIndicators(params.symbol as string);
       
       default:
         return {

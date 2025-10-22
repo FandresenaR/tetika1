@@ -60,7 +60,16 @@ export class TradingSearchService {
 
       const data = await response.json();
       
-      return (data.news_results || []).map((item: any, index: number) => ({
+      interface NewsResult {
+        title?: string;
+        link?: string;
+        source?: string;
+        date?: string;
+        snippet?: string;
+        thumbnail?: string;
+      }
+      
+      return ((data.news_results as NewsResult[]) || []).map((item: NewsResult, index: number) => ({
         position: index + 1,
         title: item.title || '',
         link: item.link || '',
@@ -103,7 +112,16 @@ export class TradingSearchService {
 
       const data = await response.json();
       
-      return (data.organic_results || []).map((item: any) => ({
+      interface OrganicResult {
+        title?: string;
+        link?: string;
+        snippet?: string;
+        source?: string;
+        displayed_link?: string;
+        date?: string;
+      }
+      
+      return ((data.organic_results as OrganicResult[]) || []).map((item: OrganicResult) => ({
         title: item.title || '',
         link: item.link || '',
         snippet: item.snippet || '',
@@ -142,7 +160,16 @@ export class TradingSearchService {
 
       const data = await response.json();
       
-      return (data.organic_results || []).map((item: any) => ({
+      interface OrganicResult {
+        title?: string;
+        link?: string;
+        snippet?: string;
+        source?: string;
+        displayed_link?: string;
+        date?: string;
+      }
+      
+      return ((data.organic_results as OrganicResult[]) || []).map((item: OrganicResult) => ({
         title: item.title || '',
         link: item.link || '',
         snippet: item.snippet || '',
@@ -178,7 +205,13 @@ export class TradingSearchService {
 
       const data = await response.json();
       
-      return (data.result || []).slice(0, 10).map((item: any) => ({
+      interface SearchResult {
+        symbol?: string;
+        description?: string;
+        type?: string;
+      }
+      
+      return ((data.result as SearchResult[]) || []).slice(0, 10).map((item: SearchResult) => ({
         symbol: item.symbol || '',
         name: item.description || '',
         type: item.type || 'Common Stock'

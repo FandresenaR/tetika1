@@ -34,7 +34,9 @@ export default function TradingViewWidget({ symbol, theme = 'dark', height = 500
       script.src = 'https://s3.tradingview.com/tv.js';
       script.async = true;
       script.onload = () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (typeof (window as any).TradingView !== 'undefined') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           new (window as any).TradingView.widget({
             autosize: true,
             symbol: tradingViewSymbol,

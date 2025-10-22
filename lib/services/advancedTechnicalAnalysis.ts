@@ -37,7 +37,7 @@ export class AdvancedTechnicalAnalysis {
     if (data.length < 3) return patterns;
 
     const last3 = data.slice(-3);
-    const [prev2, prev1, current] = last3;
+    const [, prev1, current] = last3;
 
     // Doji
     if (Math.abs(current.close - current.open) < (current.high - current.low) * 0.1) {
