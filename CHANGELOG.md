@@ -14,6 +14,8 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Composant TableRenderer** (`components/chat/TableRenderer.tsx`)
   - Détection automatique des tableaux Markdown dans les réponses IA
   - Parsing des tableaux avec headers, alignement et données
+  - **Nettoyage automatique du formatage Markdown** dans les cellules
+  - Fonction `cleanMarkdown()` pour supprimer `**`, `*`, `<br>`, liens, etc.
   - Fonction `extractMarkdownTables()` pour extraire les tableaux du contenu
   - Fonction `parseMarkdownTable()` pour parser la structure
 
@@ -31,13 +33,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Compatible avec tous les tableurs
 
 - **Mise en forme professionnelle des tableaux**
-  - Header avec fond contrasté et texte en couleur accent (cyan)
+  - Header avec fond contrasté (gray-800/60) et texte cyan vif
   - Bordure inférieure épaisse sur les headers
-  - Lignes alternées (zebra striping) pour meilleure lisibilité
-  - Effet hover sur les lignes
+  - Lignes alternées (zebra striping) avec opacité subtile
+  - Effet hover sur les lignes (gray-700/30)
   - Respect de l'alignement Markdown (left, center, right)
   - Design responsive avec scroll horizontal si nécessaire
   - Thème dark/light adaptatif
+  - **Cellules avec `whitespace-normal`** pour le retour à la ligne automatique
+  - **Padding vertical augmenté** (py-3.5) pour meilleure lisibilité
+  - **`leading-relaxed`** pour espacement des lignes de texte
+  - **Fond plus foncé** (bg-gray-900/80) pour meilleur contraste
 
 - **Statistiques du tableau**
   - Affichage du nombre de colonnes × lignes
@@ -54,6 +60,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Préservation du formatage ReactMarkdown pour le reste du contenu
 
 #### Technique
+
+**Nettoyage du formatage Markdown** :
+```typescript
+const cleanMarkdown = (text: string): string => {
+  return text
+    .replace(/<br\s*\/?>/gi, ' ')           // Supprimer <br>
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Liens → texte
+    .replace(/\*\*([^*]+)\*\*/g, '$1')       // **gras** → gras
+    .replace(/\*([^*]+)\*/g, '$1')           // *italique* → italique
+    .replace(/`([^`]+)`/g, '$1')             // `code` → code
+    .replace(/__([^_]+)__/g, '$1')           // __gras__ → gras
+    .replace(/_([^_]+)_/g, '$1')             // _italique_ → italique
+    .replace(/\s+/g, ' ')                    // Espaces multiples
+    .trim();
+};
+```
 
 **Détection de tableaux** :
 - Regex pour lignes avec pipes `|`
