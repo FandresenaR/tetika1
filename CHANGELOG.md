@@ -5,6 +5,82 @@ Tous les changements notables apportés au projet Tetika seront documentés dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2025-10-22
+
+### 🔍 Filtres "Nouveau" et "Multimodal" dans le Sélecteur de Modèles
+
+#### Ajouté
+
+- **Expiration automatique du badge "NEW" après 3 mois**
+  - Modification de `AIModel.isNew` : Peut être `boolean | { added: timestamp }`
+  - Fonction `isModelNew()` vérifie si un modèle a moins de 3 mois (90 jours)
+  - Fonction `getModelAddedTimestamp()` pour récupérer la date d'ajout
+  - Conservation des timestamps entre les synchronisations
+  - Badge "NEW" disparaît automatiquement après 3 mois
+
+- **Filtre "🆕 Nouveau" dans ModelSelector**
+  - Bouton avec compteur de modèles récents
+  - Affiche uniquement les modèles < 3 mois
+  - Badge vert avec animation et bordure lumineuse
+  - État toggle on/off
+
+- **Filtre "👁️ Multimodal" dans ModelSelector**
+  - Bouton avec compteur de modèles vision
+  - Affiche les modèles avec `category: 'vision'`
+  - Badge violet avec animation
+  - État toggle on/off
+
+- **Badge "NEW" dans les cartes de modèles**
+  - Badge vert "NEW" affiché sur chaque modèle récent
+  - Position flexible avec wrap automatique
+  - Visible dans toutes les sections (Gratuit, Standard, Premium)
+
+- **Statistiques de filtres**
+  - Affichage du nombre de résultats filtrés
+  - Indication visuelle des filtres actifs (Nouveaux, Multimodaux)
+  - Bouton "Réinitialiser" pour effacer tous les filtres
+
+#### Modifié
+
+- **openRouterSync.ts**
+  - `getCachedFreeModels()` préserve les timestamps existants
+  - Crée `{ added: Date.now() }` pour les nouveaux modèles uniquement
+  - `getFreeModelsStats()` utilise `isModelNew()` pour le comptage
+  - Comparaison avec Map au lieu de Set pour conserver les métadonnées
+
+- **ModelSelector.tsx**
+  - Ajout des états `showOnlyNew` et `showOnlyMultimodal`
+  - Section "Filtres rapides" avant "Par spécialité"
+  - Compteurs dynamiques : `newModelsCount` et `multimodalModelsCount`
+  - `handleResetFilters()` réinitialise tous les filtres (4 au lieu de 2)
+  - Import de `isModelNew()` depuis `openRouterSync.ts`
+
+- **SettingsModal.tsx**
+  - Section "Modèles récemment ajoutés" affiche "(moins de 3 mois)"
+  - Utilise `isModelNew()` au lieu de `m.isNew` directement
+  - Filtre cohérent avec le ModelSelector
+
+- **types/index.ts**
+  - `isNew?: boolean | { added: number }` pour supporter les timestamps
+
+#### Technique
+
+- **Persistance des timestamps** : localStorage conserve les dates d'ajout
+- **Validation temporelle** : `(Date.now() - added) < 90 * 24 * 60 * 60 * 1000`
+- **Rétrocompatibilité** : `typeof isNew === 'boolean'` pour anciens modèles
+- **Performance** : Compteurs calculés une seule fois avec `allModels.filter()`
+
+#### Interface Utilisateur
+
+```
+Filtres rapides
+┌────────────────────────────────────────────┐
+│ [🆕 Nouveau (7)]  [👁️ Multimodal (12)]   │
+└────────────────────────────────────────────┘
+
+12 modèle(s) trouvé(s) · Nouveaux uniquement
+```
+
 ## [0.6.0] - 2025-10-22
 
 ### 🆕 Classification et Badge "NEW" pour les Modèles

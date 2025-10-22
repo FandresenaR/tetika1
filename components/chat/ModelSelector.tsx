@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AIModel } from '@/types';
 import { getAllModels, getAvailableCategories } from '@/lib/models';
+import { isModelNew } from '@/lib/services/openRouterSync';
 
 interface ModelSelectorProps {
   selectedModelId?: string;
@@ -21,6 +22,9 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   // État pour stocker le terme de recherche
   const [searchTerm, setSearchTerm] = useState('');
+  // Filtres spéciaux
+  const [showOnlyNew, setShowOnlyNew] = useState(false);
+  const [showOnlyMultimodal, setShowOnlyMultimodal] = useState(false);
   
   const allModels = getAllModels();
   const availableCategories = getAvailableCategories();
@@ -57,6 +61,16 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       filtered = filtered.filter(model => model.category === categoryFilter);
     }
     
+    // Filtre "Nouveau" - modèles ajoutés il y a moins de 3 mois
+    if (showOnlyNew) {
+      filtered = filtered.filter(model => isModelNew(model.isNew));
+    }
+    
+    // Filtre "Multimodal" - modèles avec vision
+    if (showOnlyMultimodal) {
+      filtered = filtered.filter(model => model.features.rag && model.category === 'vision');
+    }
+    
     return filtered;
   };
   
@@ -79,7 +93,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const handleResetFilters = () => {
     setCategoryFilter(null);
     setSearchTerm('');
+    setShowOnlyNew(false);
+    setShowOnlyMultimodal(false);
   };
+  
+  // Compter les modèles nouveaux et multimodaux
+  const newModelsCount = allModels.filter(m => isModelNew(m.isNew)).length;
+  const multimodalModelsCount = allModels.filter(m => m.features.rag && m.category === 'vision').length;
 
   // Classes conditionnelles selon le thème
   const sectionBgClass = theme === 'dark' 
@@ -176,13 +196,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         </div>
       </div>
       
-      {/* Filtres par catégorie */}
-      <div className="mb-6">
+      {/* Filtres spéciaux (Nouveau & Multimodal) */}
+      <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
           <h4 className={`text-sm font-medium ${theme === 'dark' ? 'text-cyan-300' : 'text-blue-700'}`}>
-            Filtrer par spécialité
+            Filtres rapides
           </h4>
-          {(categoryFilter || searchTerm) && (
+          {(categoryFilter || searchTerm || showOnlyNew || showOnlyMultimodal) && (
             <button 
               onClick={handleResetFilters}
               className={`text-xs ${theme === 'dark' ? 'text-cyan-300 hover:text-cyan-100' : 'text-blue-600 hover:text-blue-800'}`}
@@ -191,6 +211,67 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             </button>
           )}
         </div>
+        
+        <div className="flex flex-wrap gap-2">
+          {/* Filtre Nouveau */}
+          <button
+            onClick={() => setShowOnlyNew(!showOnlyNew)}
+            className={`text-xs px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5 ${
+              showOnlyNew
+                ? theme === 'dark'
+                  ? 'bg-green-700 text-white shadow-[0_0_10px_rgba(34,197,94,0.3)]'
+                  : 'bg-green-600 text-white shadow-md'
+                : theme === 'dark'
+                  ? 'bg-green-950/50 text-green-300 hover:bg-green-900/50 border border-green-700/30'
+                  : 'bg-green-100/50 text-green-700 hover:bg-green-200/50 border border-green-300'
+            }`}
+          >
+            <span className="text-base">🆕</span>
+            <span>Nouveau</span>
+            <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+              showOnlyNew
+                ? 'bg-white/20'
+                : theme === 'dark'
+                  ? 'bg-green-900/50'
+                  : 'bg-green-200'
+            }`}>
+              {newModelsCount}
+            </span>
+          </button>
+          
+          {/* Filtre Multimodal */}
+          <button
+            onClick={() => setShowOnlyMultimodal(!showOnlyMultimodal)}
+            className={`text-xs px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5 ${
+              showOnlyMultimodal
+                ? theme === 'dark'
+                  ? 'bg-purple-700 text-white shadow-[0_0_10px_rgba(168,85,247,0.3)]'
+                  : 'bg-purple-600 text-white shadow-md'
+                : theme === 'dark'
+                  ? 'bg-purple-950/50 text-purple-300 hover:bg-purple-900/50 border border-purple-700/30'
+                  : 'bg-purple-100/50 text-purple-700 hover:bg-purple-200/50 border border-purple-300'
+            }`}
+          >
+            <span className="text-base">👁️</span>
+            <span>Multimodal</span>
+            <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+              showOnlyMultimodal
+                ? 'bg-white/20'
+                : theme === 'dark'
+                  ? 'bg-purple-900/50'
+                  : 'bg-purple-200'
+            }`}>
+              {multimodalModelsCount}
+            </span>
+          </button>
+        </div>
+      </div>
+      
+      {/* Filtres par catégorie */}
+      <div className="mb-6">
+        <h4 className={`text-sm font-medium ${theme === 'dark' ? 'text-cyan-300' : 'text-blue-700'} mb-2`}>
+          Par spécialité
+        </h4>
         
         <div className="flex flex-wrap gap-2">
           {availableCategories.map(category => (
@@ -210,11 +291,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       </div>
       
       {/* Statistiques de recherche */}
-      {(searchTerm || categoryFilter) && (
+      {(searchTerm || categoryFilter || showOnlyNew || showOnlyMultimodal) && (
         <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
           {filteredModels.length} modèle(s) trouvé(s)
           {searchTerm && <span> pour &quot;{searchTerm}&quot;</span>}
           {categoryFilter && <span> dans la catégorie &quot;{categoryTranslations[categoryFilter]}&quot;</span>}
+          {showOnlyNew && <span> · <span className="text-green-400">Nouveaux uniquement</span></span>}
+          {showOnlyMultimodal && <span> · <span className="text-purple-400">Multimodaux uniquement</span></span>}
         </div>
       )}
       
@@ -369,10 +452,15 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, isSelected, onSelect, them
       onClick={onSelect}
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center">
+        <div className="flex items-center flex-wrap gap-2">
           <h5 className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{model.name}</h5>
+          {isModelNew(model.isNew) && (
+            <span className={`text-xs font-bold ${theme === 'dark' ? 'bg-green-900/40 text-green-300 border border-green-600/30' : 'bg-green-100 text-green-700 border border-green-300'} px-2 py-0.5 rounded`}>
+              NEW
+            </span>
+          )}
           {model.free && (
-            <span className={`ml-2 text-xs ${theme === 'dark' ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'} px-1.5 py-0.5 rounded-full`}>
+            <span className={`text-xs ${theme === 'dark' ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'} px-1.5 py-0.5 rounded-full`}>
               Gratuit
             </span>
           )}

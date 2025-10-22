@@ -5,6 +5,27 @@
 
 import { getCategoryFromDescription } from '../models';
 
+/**
+ * Vérifie si un modèle est considéré comme "nouveau" (moins de 3 mois)
+ */
+export function isModelNew(isNew: boolean | { added: number } | undefined): boolean {
+  if (!isNew) return false;
+  if (typeof isNew === 'boolean') return isNew;
+  
+  const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000; // 90 jours
+  const now = Date.now();
+  return (now - isNew.added) < threeMonthsInMs;
+}
+
+/**
+ * Récupère le timestamp d'ajout d'un modèle
+ */
+export function getModelAddedTimestamp(isNew: boolean | { added: number } | undefined): number | null {
+  if (!isNew) return null;
+  if (typeof isNew === 'boolean') return Date.now(); // Fallback pour anciens modèles
+  return isNew.added;
+}
+
 export interface OpenRouterModel {
   id: string;
   name: string;
@@ -116,7 +137,7 @@ export function assignCategory(model: OpenRouterModel): 'general' | 'coding' | '
 /**
  * Convertit un modèle OpenRouter en format interne de l'application
  */
-export function convertToAppModel(model: OpenRouterModel, isNew = false) {
+export function convertToAppModel(model: OpenRouterModel, isNew: boolean | { added: number } = false) {
   const category = assignCategory(model);
   
   return {
@@ -214,7 +235,9 @@ export async function getCachedFreeModels(
   
   // Charger les anciens modèles depuis localStorage pour comparaison
   const previousModels = loadFreeModelsFromLocalStorage();
-  const previousModelIds = new Set(previousModels?.map(m => m.id) || []);
+  const previousModelMap = new Map(
+    previousModels?.map(m => [m.id, m.isNew]) || []
+  );
   
   // Récupérer les nouveaux modèles depuis l'API
   console.log('[OpenRouter Sync] Cache expired or force refresh, fetching new models');
@@ -223,7 +246,17 @@ export async function getCachedFreeModels(
   
   // Convertir et marquer les nouveaux modèles
   const convertedModels = freeModels.map(model => {
-    const isNew = !previousModelIds.has(model.id);
+    const previousIsNew = previousModelMap.get(model.id);
+    
+    let isNew: boolean | { added: number };
+    if (previousIsNew !== undefined) {
+      // Modèle existant - conserver son statut isNew avec timestamp
+      isNew = previousIsNew;
+    } else {
+      // Nouveau modèle - créer timestamp
+      isNew = { added: now };
+    }
+    
     return convertToAppModel(model, isNew);
   });
   
@@ -258,7 +291,7 @@ export async function getFreeModelsStats() {
   
   const stats = {
     total: models.length,
-    new: models.filter(m => m.isNew).length,
+    new: models.filter(m => isModelNew(m.isNew)).length,
     byProvider: {} as Record<string, number>,
     byCategory: {} as Record<string, number>,
     withVision: models.filter(m => m.features.vision).length,

@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
     // Filtrer les modèles gratuits
     const freeModels = filterFreeModels(allModels);
     
-    // Convertir au format de l'application
-    const appModels = freeModels.map(convertToAppModel);
+    // Convertir au format de l'application (sans isNew pour l'API)
+    const appModels = freeModels.map(m => convertToAppModel(m, false));
     
     // Trier par qualité
     const sortedModels = sortModelsByQuality(appModels);
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     // Récupérer et traiter les modèles
     const allModels = await fetchOpenRouterModels();
     const freeModels = filterFreeModels(allModels);
-    const appModels = freeModels.map(convertToAppModel);
+    const appModels = freeModels.map(m => convertToAppModel(m, false));
     const sortedModels = sortModelsByQuality(appModels);
 
     return NextResponse.json({

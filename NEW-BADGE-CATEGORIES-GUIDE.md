@@ -12,8 +12,10 @@ Lorsque vous synchronisez les modèles :
 
 1. **Comparaison avec le cache précédent** : Le système charge les modèles du cache localStorage
 2. **Détection des nouveaux** : Compare les IDs des modèles récupérés avec ceux du cache
-3. **Marquage automatique** : Les modèles qui n'existaient pas auparavant reçoivent `isNew: true`
-4. **Affichage visuel** : Badge vert "NEW" avec bordure dans l'interface
+3. **Marquage automatique** : Les modèles qui n'existaient pas auparavant reçoivent `isNew: { added: Date.now() }`
+4. **Conservation du timestamp** : Les modèles existants gardent leur timestamp d'origine
+5. **Vérification de l'expiration** : Le badge "NEW" disparaît automatiquement après **3 mois (90 jours)**
+6. **Affichage visuel** : Badge vert "NEW" avec bordure dans l'interface pour les modèles < 3 mois
 
 ### Interface utilisateur
 
@@ -115,7 +117,46 @@ Par catégorie:
 └──────────────┴──────────────┴──────────────┘
 ```
 
-## Filtrage avancé
+## Filtres dans le Sélecteur de Modèles
+
+### Nouveaux Filtres (v0.6.1)
+
+Le sélecteur de modèles inclut maintenant **2 filtres rapides** :
+
+#### 🆕 Filtre "Nouveau"
+- Affiche uniquement les modèles ajoutés **il y a moins de 3 mois**
+- Badge vert avec compteur de modèles
+- Animation et bordure lumineuse quand activé
+
+#### 👁️ Filtre "Multimodal"
+- Affiche les modèles avec capacité vision (traitement d'images)
+- Badge violet avec compteur
+- Filtre sur `category: 'vision'` et `features.rag: true`
+
+### Interface Utilisateur
+
+```
+Filtres rapides
+┌───────────────────────────────────────────────┐
+│ [🆕 Nouveau (7)]  [👁️ Multimodal (12)]      │
+└───────────────────────────────────────────────┘
+
+Par spécialité
+┌───────────────────────────────────────────────┐
+│ [Général] [Programmation] [Vision]           │
+│ [Créativité] [Raisonnement] [Recherche]      │
+└───────────────────────────────────────────────┘
+```
+
+### Fonctionnalités
+
+- ✅ **Toggle on/off** : Clic pour activer/désactiver
+- ✅ **Compteurs dynamiques** : Nombre de modèles par filtre
+- ✅ **Combinaison possible** : Nouveau + Catégorie, etc.
+- ✅ **Réinitialisation globale** : Bouton "Réinitialiser" efface tous les filtres
+- ✅ **Badge "NEW"** visible sur chaque carte de modèle récent
+
+## Filtrage avancé (Programmation)
 
 ### Par catégorie
 
@@ -230,16 +271,18 @@ Exemple de données :
 
 ### Syncs ultérieurs
 
-1. **Charge le cache** localStorage précédent
+1. **Charge le cache** localStorage précédent avec timestamps
 2. **Compare les IDs** entre ancien et nouveau
-3. **Marque uniquement les nouveaux** (`id` absent du cache)
-4. **Affichage** : Badge "NEW" uniquement sur les modèles ajoutés
+3. **Préserve les timestamps** des modèles existants
+4. **Crée un timestamp** pour les nouveaux modèles (`id` absent du cache)
+5. **Vérifie l'expiration** : Si > 3 mois, le badge "NEW" n'est plus affiché
+6. **Affichage** : Badge "NEW" uniquement sur les modèles < 3 mois
 
 ### Persistence
 
 - **Cache mémoire** : 1 heure
 - **localStorage** : 24 heures
-- **Badge "NEW"** : Jusqu'au prochain sync (pas de TTL)
+- **Badge "NEW"** : **Expire automatiquement après 3 mois** depuis l'ajout du modèle
 
 ## Performance
 

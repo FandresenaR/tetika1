@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FiSettings, FiX, FiCheck, FiEye, FiEyeOff, FiSearch, FiInfo, FiRefreshCw, FiDatabase } from 'react-icons/fi';
 import { RAG_PROVIDERS, DEFAULT_RAG_PROVIDER } from '@/lib/rag-providers';
 import { useOpenRouterModels } from '@/lib/hooks/useOpenRouterModels';
+import { isModelNew } from '@/lib/services/openRouterSync';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -569,14 +570,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
               )}
 
               {/* Nouveaux modèles */}
-              {!isLoadingModels && models.filter(m => m.isNew).length > 0 && (
+              {!isLoadingModels && models.filter(m => isModelNew(m.isNew)).length > 0 && (
                 <div className="mb-4">
                   <p className="text-sm font-medium text-gray-300 mb-2">
-                    🆕 Modèles récemment ajoutés:
+                    🆕 Modèles récemment ajoutés (moins de 3 mois):
                   </p>
                   <div className="bg-gray-700 rounded-lg p-3 max-h-48 overflow-y-auto">
                     <div className="space-y-2">
-                      {models.filter(m => m.isNew).slice(0, 10).map(model => {
+                      {models.filter(m => isModelNew(m.isNew)).slice(0, 10).map(model => {
                         const categoryIcons: Record<string, string> = {
                           general: '🌐',
                           coding: '💻',
@@ -600,9 +601,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                           </div>
                         );
                       })}
-                      {models.filter(m => m.isNew).length > 10 && (
+                      {models.filter(m => isModelNew(m.isNew)).length > 10 && (
                         <p className="text-xs text-gray-400 text-center pt-1">
-                          ... et {models.filter(m => m.isNew).length - 10} autres nouveaux modèles
+                          ... et {models.filter(m => isModelNew(m.isNew)).length - 10} autres nouveaux modèles
                         </p>
                       )}
                     </div>
