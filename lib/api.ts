@@ -466,6 +466,29 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
         return { role, content };
       });
     
+    // Modèles qui ne supportent pas les "system" messages (Developer instructions)
+    const noSystemRoleModels = [
+      'google/gemma',  // Tous les modèles Gemma
+      'google/gemini-2.0-flash-exp:free' // Et potentiellement d'autres Gemini
+    ];
+    
+    // Vérifier si le modèle nécessite une conversion des messages system
+    const needsSystemConversion = noSystemRoleModels.some(pattern => modelId.includes(pattern));
+    
+    if (needsSystemConversion) {
+      console.log(`Model ${modelId} does not support system messages, converting to user messages`);
+      cleanMessages = cleanMessages.map(msg => {
+        if (msg.role === 'system') {
+          // Convertir le message system en message user avec un préfixe clair
+          return {
+            role: 'user',
+            content: `[Instructions]: ${msg.content}`
+          };
+        }
+        return msg;
+      });
+    }
+    
     // S'assurer qu'il y a au moins un message utilisateur
     if (cleanMessages.length === 0) {
       cleanMessages = [{ role: 'user', content: 'Hello' }];

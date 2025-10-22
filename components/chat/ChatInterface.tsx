@@ -1055,6 +1055,9 @@ The complete extraction process, AI analysis, and raw data are available in the 
         // Vérifier si c'est un fichier texte
         const isTextFile = currentFile.type.includes('text') || textExtensions.includes(fileExtension);
         
+        // Vérifier si c'est un PDF
+        const isPDF = currentFile.type === 'application/pdf' || fileExtension === '.pdf';
+        
         // Nouveau: Vérifier si c'est une image ou vidéo
         const isImage = isImageFile(currentFile);
         const isVideo = isVideoFile(currentFile);
@@ -1076,6 +1079,45 @@ The complete extraction process, AI analysis, and raw data are available in the 
             });
           } catch (error) {
             console.error('Erreur lors de la lecture du fichier:', error);
+          }
+        }
+        // Nouveau: Traitement des fichiers PDF
+        else if (isPDF) {
+          try {
+            // Convertir le PDF en base64
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve, reject) => {
+              reader.onload = () => {
+                const result = reader.result as string;
+                // Extraire seulement la partie base64 (après la virgule)
+                const base64 = result.split(',')[1] || result;
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(currentFile);
+            });
+            
+            const pdfBase64 = await base64Promise;
+            
+            // Mettre à jour la propriété content dans attachedFile
+            if (userMessage.attachedFile) {
+              userMessage.attachedFile.content = `PDF en base64 (${(pdfBase64.length / 1024).toFixed(2)} KB)`;
+            }
+            
+            // Pour les modèles multimodaux, envoyer le PDF en base64
+            // Le modèle pourra extraire et lire le texte du PDF
+            messagesForAPI.push({
+              role: 'system',
+              content: `L'utilisateur a joint un fichier PDF: ${currentFile.name} (${(currentFile.size / 1024).toFixed(2)} KB).\n\nContenu PDF en base64:\n${pdfBase64}\n\nVeuillez extraire et analyser le contenu de ce PDF pour répondre aux questions de l'utilisateur.`
+            });
+            
+            console.log(`PDF "${currentFile.name}" converti en base64 et ajouté aux messages (${(pdfBase64.length / 1024).toFixed(2)} KB)`);
+          } catch (error) {
+            console.error('Erreur lors de la lecture du PDF:', error);
+            messagesForAPI.push({
+              role: 'system',
+              content: `Erreur lors de la lecture du fichier PDF: ${currentFile.name}. L'utilisateur a joint un PDF mais son contenu n'a pas pu être extrait.`
+            });
           }
         } 
         // Nouveau: Traitement des images
@@ -1121,11 +1163,55 @@ The complete extraction process, AI analysis, and raw data are available in the 
           }
         }
         else {
-          // Pour les autres types de fichiers, ajouter une instruction
-          messagesForAPI.push({
-            role: 'system',
-            content: `L&apos;utilisateur a joint un fichier: ${currentFile.name} (${currentFile.type || 'type inconnu'}). Type: ${isImage ? 'Image' : isVideo ? 'Vidéo' : 'Fichier non pris en charge'}. Taille: ${(currentFile.size / 1024).toFixed(2)} KB.`
-          });
+          // Pour les autres types de fichiers (Word, Excel, PowerPoint, etc.)
+          // Les convertir en base64 pour que les modèles multimodaux puissent les traiter
+          try {
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve, reject) => {
+              reader.onload = () => {
+                const result = reader.result as string;
+                // Extraire seulement la partie base64 (après la virgule)
+                const base64 = result.split(',')[1] || result;
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(currentFile);
+            });
+            
+            const fileBase64 = await base64Promise;
+            
+            // Mettre à jour la propriété content dans attachedFile
+            if (userMessage.attachedFile) {
+              userMessage.attachedFile.content = `Fichier en base64 (${(fileBase64.length / 1024).toFixed(2)} KB)`;
+            }
+            
+            // Déterminer le type de fichier pour donner des instructions appropriées
+            let fileTypeDescription = 'document';
+            if (currentFile.type.includes('word') || fileExtension === '.docx' || fileExtension === '.doc') {
+              fileTypeDescription = 'document Word';
+            } else if (currentFile.type.includes('excel') || currentFile.type.includes('spreadsheet') || fileExtension === '.xlsx' || fileExtension === '.xls') {
+              fileTypeDescription = 'fichier Excel/tableur';
+            } else if (currentFile.type.includes('powerpoint') || currentFile.type.includes('presentation') || fileExtension === '.pptx' || fileExtension === '.ppt') {
+              fileTypeDescription = 'présentation PowerPoint';
+            } else if (fileExtension === '.zip' || fileExtension === '.rar' || fileExtension === '.7z') {
+              fileTypeDescription = 'archive compressée';
+            }
+            
+            // Envoyer le fichier en base64 avec des instructions claires
+            messagesForAPI.push({
+              role: 'system',
+              content: `L'utilisateur a joint un ${fileTypeDescription}: ${currentFile.name} (${currentFile.type || 'type inconnu'}, ${(currentFile.size / 1024).toFixed(2)} KB).\n\nContenu du fichier en base64:\n${fileBase64}\n\nVeuillez analyser le contenu de ce fichier pour répondre aux questions de l'utilisateur. Si vous pouvez extraire du texte ou des données structurées de ce fichier, faites-le.`
+            });
+            
+            console.log(`Fichier "${currentFile.name}" (${fileTypeDescription}) converti en base64 et ajouté aux messages (${(fileBase64.length / 1024).toFixed(2)} KB)`);
+          } catch (error) {
+            console.error('Erreur lors de la lecture du fichier:', error);
+            // En cas d'erreur, ajouter quand même une indication du fichier
+            messagesForAPI.push({
+              role: 'system',
+              content: `L'utilisateur a joint un fichier: ${currentFile.name} (${currentFile.type || 'type inconnu'}). Taille: ${(currentFile.size / 1024).toFixed(2)} KB. Le contenu du fichier n'a pas pu être extrait, mais l'utilisateur souhaite probablement des informations à son sujet.`
+            });
+          }
         }
       }
       

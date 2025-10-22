@@ -11,6 +11,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 #### Ajouté
 
+- **Support multimodal complet pour les fichiers**
+  - Les modèles multimodaux peuvent maintenant lire le contenu de tous types de fichiers
+  - Conversion automatique des PDF en base64 pour extraction par l'IA
+  - Support des fichiers Word (.docx, .doc) avec conversion base64
+  - Support des fichiers Excel (.xlsx, .xls) avec conversion base64
+  - Support des présentations PowerPoint (.pptx, .ppt)
+  - Les fichiers texte continuent d'être envoyés en texte brut
+  - Les images utilisent la vision multimodale native
+  - Instructions adaptées selon le type de fichier détecté
+
 - **Système de nettoyage des modèles OpenRouter**
   - Suppression automatique des modèles qui n'existent plus dans l'API
   - Suppression des modèles qui ne sont plus gratuits
@@ -32,6 +42,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Solution: Migration de ModelSelector vers `useOpenRouterModels()` pour synchronisation en temps réel
   - Impact: Le sélecteur de modèles affiche maintenant exactement les mêmes modèles que l'onglet Paramètres
   - Résultat: Les modèles obsolètes disparaissent immédiatement après actualisation
+
+- **BUG: Gemma 3 ne supporte pas les messages system (Developer instructions)**
+  - Erreur: `"Developer instruction is not enabled for models/gemma-3-4b-it"`
+  - Problème: Les modèles Google Gemma rejettent les messages avec `role: "system"`
+  - Solution: Détection automatique des modèles Gemma et conversion `system` → `user` avec préfixe `[Instructions]`
+  - Impact: Les modèles Gemma peuvent maintenant être utilisés avec des fichiers joints ou instructions système
+  - Modèles affectés: `google/gemma-*`, potentiellement certains `google/gemini-2.0-flash-exp`
 
 - **Gestion améliorée des erreurs HTTP**
   - Status codes appropriés selon le type d'erreur (429, 404, 401, 403)
@@ -70,6 +87,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Layout flex avec gap pour un alignement optimal
   - Tooltip explicatif: "Actualiser la liste des modèles depuis OpenRouter"
   - Type `any` utilisé temporairement pour compatibilité entre les deux structures (à améliorer)
+
+- **`lib/api.ts`** (Amélioration de la compatibilité modèles)
+  - Ajout de la détection automatique des modèles incompatibles avec `system` messages
+  - Liste des modèles nécessitant conversion : `google/gemma-*`, `google/gemini-2.0-flash-exp:free`
+  - Conversion automatique : `role: "system"` → `role: "user"` avec préfixe `[Instructions]:`
+  - Logging : `"Model {id} does not support system messages, converting to user messages"`
+  - Résout l'erreur : `"Developer instruction is not enabled for models/gemma-3-4b-it"`
+
+- **`components/chat/ChatInterface.tsx`** (Support multimodal des fichiers)
+  - Ajout de la conversion PDF vers base64 pour permettre l'extraction de texte par les IA multimodales
+  - Ajout de la conversion automatique de tous types de fichiers (Word, Excel, PowerPoint, archives) en base64
+  - Détection intelligente du type de fichier avec descriptions appropriées
+  - Instructions système adaptées selon le type : "document Word", "fichier Excel/tableur", "présentation PowerPoint", etc.
+  - Logging détaillé : `"PDF converti en base64 (X KB)"` et `"Fichier converti en base64 (X KB)"`
+  - Gestion d'erreur robuste avec message de fallback si la conversion échoue
+  - Maintien du support existant pour fichiers texte et images
 
 - **`app/api/chat/route.ts`**
   - Retourne des status codes HTTP appropriés selon le type d'erreur :
