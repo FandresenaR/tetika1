@@ -715,6 +715,50 @@ export async function callOpenRouterAPI(modelId: string, messages: Message[], st
         
         console.error('OpenRouter returned an error:', errorMessage);
         
+        // Détection spécifique des erreurs de dépassement de contexte
+        if (errorMessage.includes('context length') || errorMessage.includes('tokens') && errorMessage.includes('longer')) {
+          // Extraire les nombres de tokens si possible
+          const match = errorMessage.match(/(\d+)\s+tokens.*?(\d+)\s+tokens/);
+          if (match) {
+            const inputTokens = match[1];
+            const maxTokens = match[2];
+            return {
+              choices: [{
+                message: {
+                  content: `❌ Fichier trop volumineux!\n\n` +
+                          `Le contenu du fichier converti dépasse la limite de contexte du modèle.\n\n` +
+                          `📊 Détails:\n` +
+                          `• Taille de votre contenu: ${inputTokens} tokens\n` +
+                          `• Limite du modèle: ${maxTokens} tokens\n\n` +
+                          `💡 Solutions:\n` +
+                          `1. Utilisez un fichier plus petit (max 3 MB recommandé)\n` +
+                          `2. Divisez votre fichier en plusieurs parties\n` +
+                          `3. Choisissez un modèle avec une limite de contexte plus grande\n` +
+                          `4. Extrayez seulement la partie importante du document\n\n` +
+                          `Modèles recommandés pour gros fichiers:\n` +
+                          `• Google Gemini 2.0 Flash (1M tokens)\n` +
+                          `• Google Gemini 1.5 Pro (2M tokens)`
+                }
+              }]
+            };
+          }
+          
+          // Message générique si on ne peut pas extraire les chiffres
+          return {
+            choices: [{
+              message: {
+                content: `❌ Fichier trop volumineux!\n\n` +
+                        `Le contenu du fichier dépasse la limite de contexte du modèle.\n\n` +
+                        `💡 Solutions:\n` +
+                        `1. Utilisez un fichier plus petit (max 3 MB recommandé)\n` +
+                        `2. Divisez votre fichier en plusieurs parties\n` +
+                        `3. Choisissez un modèle avec une limite de contexte plus grande\n\n` +
+                        `Erreur technique: ${errorMessage}`
+              }
+            }]
+          };
+        }
+        
         return {
           choices: [{
             message: {

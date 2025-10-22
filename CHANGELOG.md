@@ -20,6 +20,12 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Les fichiers texte continuent d'être envoyés en texte brut
   - Les images utilisent la vision multimodale native
   - Instructions adaptées selon le type de fichier détecté
+  - **Limites de taille pour éviter le dépassement de contexte:**
+    - PDF, Word, Excel, PowerPoint: **3 MB max**
+    - Fichiers texte: **10 MB max**
+    - Images: **5 MB max**
+  - **Messages d'erreur clairs** si le fichier dépasse la limite
+  - **Détection automatique** des erreurs de dépassement de contexte avec suggestions de solutions
 
 - **Système de nettoyage des modèles OpenRouter**
   - Suppression automatique des modèles qui n'existent plus dans l'API
@@ -94,8 +100,11 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Conversion automatique : `role: "system"` → `role: "user"` avec préfixe `[Instructions]:`
   - Logging : `"Model {id} does not support system messages, converting to user messages"`
   - Résout l'erreur : `"Developer instruction is not enabled for models/gemma-3-4b-it"`
+  - **Détection des erreurs de dépassement de contexte** avec message formaté et solutions
+  - Extraction automatique des nombres de tokens (input vs limite)
+  - Suggestions de modèles avec contexte plus grand (Gemini 1M-2M tokens)
 
-- **`components/chat/ChatInterface.tsx`** (Support multimodal des fichiers)
+- **`components/chat/ChatInterface.tsx`** (Support multimodal des fichiers + limites)
   - Ajout de la conversion PDF vers base64 pour permettre l'extraction de texte par les IA multimodales
   - Ajout de la conversion automatique de tous types de fichiers (Word, Excel, PowerPoint, archives) en base64
   - Détection intelligente du type de fichier avec descriptions appropriées
@@ -103,6 +112,8 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Logging détaillé : `"PDF converti en base64 (X KB)"` et `"Fichier converti en base64 (X KB)"`
   - Gestion d'erreur robuste avec message de fallback si la conversion échoue
   - Maintien du support existant pour fichiers texte et images
+  - **Vérification de taille AVANT conversion** : 3 MB pour base64, 10 MB pour texte, 5 MB pour images
+  - **Messages d'alerte clairs** avec taille exacte et limites recommandées
 
 - **`app/api/chat/route.ts`**
   - Retourne des status codes HTTP appropriés selon le type d'erreur :

@@ -1045,6 +1045,12 @@ The complete extraction process, AI analysis, and raw data are available in the 
       
       // Traitement spécial pour les fichiers
       if (currentFile) {
+        // VÉRIFICATION DE LA TAILLE DU FICHIER
+        // Limite: 3 MB pour les fichiers à convertir en base64 (PDF, Word, Excel, etc.)
+        // Car la conversion base64 augmente la taille de ~33%, et il faut aussi compter le contexte
+        const MAX_FILE_SIZE_BASE64 = 3 * 1024 * 1024; // 3 MB
+        const MAX_FILE_SIZE_TEXT = 10 * 1024 * 1024; // 10 MB pour fichiers texte
+        
         // Extensions de fichiers texte reconnues
         const textExtensions = ['.txt', '.md', '.js', '.jsx', '.ts', '.tsx', '.json', '.css', 
                                '.html', '.xml', '.csv', '.yml', '.yaml', '.py', '.java', '.c', 
@@ -1061,6 +1067,27 @@ The complete extraction process, AI analysis, and raw data are available in the 
         // Nouveau: Vérifier si c'est une image ou vidéo
         const isImage = isImageFile(currentFile);
         const isVideo = isVideoFile(currentFile);
+        
+        // Vérifier la taille selon le type de fichier
+        if (!isTextFile && !isImage && currentFile.size > MAX_FILE_SIZE_BASE64) {
+          // Fichier trop grand pour conversion base64
+          const sizeMB = (currentFile.size / 1024 / 1024).toFixed(2);
+          const errorMsg = `Le fichier "${currentFile.name}" est trop volumineux (${sizeMB} MB). La limite est de 3 MB pour les fichiers PDF, Word, Excel, etc. Veuillez utiliser un fichier plus petit ou diviser le contenu.`;
+          
+          alert(errorMsg);
+          setLoading(false);
+          return;
+        }
+        
+        if (isTextFile && currentFile.size > MAX_FILE_SIZE_TEXT) {
+          // Fichier texte trop grand
+          const sizeMB = (currentFile.size / 1024 / 1024).toFixed(2);
+          const errorMsg = `Le fichier texte "${currentFile.name}" est trop volumineux (${sizeMB} MB). La limite est de 10 MB pour les fichiers texte. Veuillez utiliser un fichier plus petit.`;
+          
+          alert(errorMsg);
+          setLoading(false);
+          return;
+        }
         
         if (isTextFile) {
           try {
@@ -1122,6 +1149,17 @@ The complete extraction process, AI analysis, and raw data are available in the 
         } 
         // Nouveau: Traitement des images
         else if (isImage || isVideo) {
+          // Vérifier la taille pour les images (limite plus haute car optimisation possible)
+          const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+          if (isImage && currentFile.size > MAX_IMAGE_SIZE) {
+            const sizeMB = (currentFile.size / 1024 / 1024).toFixed(2);
+            const errorMsg = `L'image "${currentFile.name}" est trop volumineuse (${sizeMB} MB). La limite est de 5 MB. Veuillez compresser l'image ou utiliser une résolution plus basse.`;
+            
+            alert(errorMsg);
+            setLoading(false);
+            return;
+          }
+          
           try {
             if (isImage) {
               // Pour les images, créer à la fois la description et récupérer le base64

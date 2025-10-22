@@ -695,7 +695,10 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
               child.type === 'code' || 
               child.type === CodeBlock || 
               child.type === 'div' || 
-              child.type === 'pre'
+              child.type === 'pre' ||
+              child.type === 'table' ||
+              child.type === 'ul' ||
+              child.type === 'ol'
             ) {
               return true;
             }
@@ -709,13 +712,26 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
             if (child.props) {
               // Type assertion to treat props as a Record with potential children
               const props = child.props as Record<string, unknown>;
+              
+              // Check className for code-related patterns
+              if (props.className && typeof props.className === 'string') {
+                if (props.className.includes('language-') || 
+                    props.className.includes('code-block') ||
+                    props.className.includes('highlight')) {
+                  return true;
+                }
+              }
+              
               if ('children' in props) {
                 // If there are nested children, recursively check them
                 const nestedChildren = React.Children.toArray(props.children as ReactNode);
                 if (nestedChildren.length > 0) {
                   return nestedChildren.some(nestedChild => 
                     React.isValidElement(nestedChild) && 
-                    (nestedChild.type === 'div' || nestedChild.type === 'pre')
+                    (nestedChild.type === 'div' || 
+                     nestedChild.type === 'pre' || 
+                     nestedChild.type === 'code' ||
+                     nestedChild.type === CodeBlock)
                   );
                 }
               }
@@ -724,7 +740,7 @@ export const Message: React.FC<MessageProps> = ({ message, theme = 'dark', onReg
           
           // Check for markdown code blocks in string content
           if (typeof child === 'string') {
-            return child.includes('```') || child.includes('<div');
+            return child.includes('```') || child.includes('<div') || child.includes('<pre');
           }
           
           return false;
