@@ -5,6 +5,56 @@ Tous les changements notables apportés au projet Tetika seront documentés dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2025-10-22
+
+### 🧹 Nettoyage Automatique des Modèles Obsolètes
+
+#### Ajouté
+
+- **Système de nettoyage des modèles OpenRouter**
+  - Suppression automatique des modèles qui n'existent plus dans l'API
+  - Suppression des modèles qui ne sont plus gratuits
+  - Logging des modèles supprimés dans la console
+  - Détection des nouveaux modèles avec timestamp
+
+#### Modifié
+
+- **`lib/services/openRouterSync.ts`**
+  - Création d'un `Set` des IDs des modèles actuels (`currentModelIds`)
+  - Filtrage des modèles obsolètes avant sauvegarde
+  - Log des modèles supprimés : `[OpenRouter Sync] Removed models (no longer free or available)`
+  - Comparaison entre anciens et nouveaux modèles pour détecter les suppressions
+
+- **`lib/hooks/useOpenRouterModels.ts`**
+  - Ajout d'un système de cache avec expiration (24 heures)
+  - Stockage du timestamp de dernière sync dans `localStorage` (`tetika-models-last-sync`)
+  - Vérification de la fraîcheur du cache avant chargement
+  - Force la synchronisation si le cache a plus de 24h
+  - Fallback vers le cache périmé en cas d'erreur réseau
+  - Meilleur logging : `[useOpenRouterModels] Cache stale or force refresh`
+
+#### Technique
+
+- Les modèles sont maintenant nettoyés à chaque synchronisation :
+  1. Récupération des modèles depuis l'API OpenRouter
+  2. Création d'un Set avec les IDs actuels
+  3. Comparaison avec les modèles en localStorage
+  4. Suppression automatique des modèles absents de l'API
+  5. Conservation du timestamp `isNew` pour les modèles existants
+
+- La synchronisation est déclenchée :
+  - Au démarrage de l'application (si cache > 24h)
+  - Manuellement via le bouton "Synchroniser les modèles" dans les paramètres
+  - Automatiquement toutes les 24 heures
+
+```typescript
+// Exemple de log lors du nettoyage
+[OpenRouter Sync] Removed models (no longer free or available): [
+  'obsolete-model/test:free',
+  'removed-model/v1:free'
+]
+```
+
 ## [0.6.2] - 2025-10-22
 
 ### 📊 Tableaux Markdown avec Export Excel/Sheets
