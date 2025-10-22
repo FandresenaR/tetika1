@@ -509,9 +509,22 @@ ${ragContext}`,
       ? error.message 
       : 'Erreur interne du serveur';
     
+    // Déterminer le status code approprié selon le type d'erreur
+    let statusCode = 500;
+    
+    if (errorMessage.includes('rate limit') || errorMessage.includes('limite de requêtes')) {
+      statusCode = 429; // Too Many Requests
+    } else if (errorMessage.includes('non trouvé') || errorMessage.includes('non disponible')) {
+      statusCode = 404; // Not Found
+    } else if (errorMessage.includes('authentification') || errorMessage.includes('Clé API invalide')) {
+      statusCode = 401; // Unauthorized
+    } else if (errorMessage.includes('Accès refusé') || errorMessage.includes('permissions')) {
+      statusCode = 403; // Forbidden
+    }
+    
     return NextResponse.json(
       { error: errorMessage },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 }

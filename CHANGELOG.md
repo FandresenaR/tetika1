@@ -17,6 +17,11 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Logging des modèles supprimés dans la console
   - Détection des nouveaux modèles avec timestamp
 
+- **Gestion améliorée des erreurs HTTP**
+  - Status codes appropriés selon le type d'erreur (429, 404, 401, 403)
+  - Messages d'erreur plus clairs pour l'utilisateur
+  - Détection automatique des rate limits avec suggestions
+
 #### Modifié
 
 - **`lib/services/openRouterSync.ts`**
@@ -33,6 +38,20 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Fallback vers le cache périmé en cas d'erreur réseau
   - Meilleur logging : `[useOpenRouterModels] Cache stale or force refresh`
 
+- **`components/ui/SettingsModal.tsx`**
+  - Bouton "Actualiser" vide maintenant le localStorage (`tetika-free-models`)
+  - Supprime également le timestamp de sync pour forcer un refresh complet
+  - Meilleur feedback visuel avec icône de confirmation
+
+- **`app/api/chat/route.ts`**
+  - Retourne des status codes HTTP appropriés selon le type d'erreur :
+    - `429` pour les rate limits (Too Many Requests)
+    - `404` pour les modèles non trouvés (Not Found)
+    - `401` pour les erreurs d'authentification (Unauthorized)
+    - `403` pour les erreurs de permissions (Forbidden)
+    - `500` pour les autres erreurs serveur (Internal Server Error)
+  - Détection automatique du type d'erreur par analyse du message
+
 #### Technique
 
 - Les modèles sont maintenant nettoyés à chaque synchronisation :
@@ -46,6 +65,26 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Au démarrage de l'application (si cache > 24h)
   - Manuellement via le bouton "Synchroniser les modèles" dans les paramètres
   - Automatiquement toutes les 24 heures
+
+- Gestion des erreurs de rate limit :
+  ```typescript
+  // Exemple de message d'erreur formaté
+  Le modèle "deepseek/deepseek-r1:free" a atteint sa limite de requêtes gratuites.
+  
+  💡 Solutions possibles:
+  1. Attendez quelques minutes et réessayez
+  2. Essayez un autre modèle gratuit
+  3. Ajoutez votre propre clé API OpenRouter
+  ```
+
+- Status HTTP renvoyés :
+  ```typescript
+  429 → Rate limit (trop de requêtes)
+  404 → Modèle non trouvé ou non disponible
+  401 → Clé API invalide ou manquante
+  403 → Accès refusé (permissions insuffisantes)
+  500 → Erreur serveur interne
+  ```
 
 ```typescript
 // Exemple de log lors du nettoyage

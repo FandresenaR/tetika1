@@ -426,39 +426,45 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                   <FiDatabase className="text-cyan-400 mr-2" />
                   <h3 className="font-medium text-white">Modèles Gratuits OpenRouter</h3>
                 </div>
-                <button
-                  onClick={async () => {
-                    try {
-                      await refreshModels();
-                      
-                      // Déclencher un événement pour notifier les autres composants
-                      window.dispatchEvent(new CustomEvent('models-synced', { 
-                        detail: { 
-                          count: models.length,
-                          timestamp: new Date().toISOString()
-                        } 
-                      }));
-                      
-                      // Notification visuelle temporaire
-                      const button = document.activeElement as HTMLButtonElement;
-                      if (button) {
-                        const originalText = button.innerHTML;
-                        button.innerHTML = '<svg class="inline-block" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> <span>Synchronisé!</span>';
-                        setTimeout(() => {
-                          button.innerHTML = originalText;
-                        }, 2000);
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Vider le cache localStorage pour forcer le rechargement depuis l'API
+                        localStorage.removeItem('tetika-free-models');
+                        localStorage.removeItem('tetika-models-last-sync');
+                        
+                        await refreshModels();
+                        
+                        // Déclencher un événement pour notifier les autres composants
+                        window.dispatchEvent(new CustomEvent('models-synced', { 
+                          detail: { 
+                            count: models.length,
+                            timestamp: new Date().toISOString()
+                          } 
+                        }));
+                        
+                        // Notification visuelle temporaire
+                        const button = document.activeElement as HTMLButtonElement;
+                        if (button) {
+                          const originalText = button.innerHTML;
+                          button.innerHTML = '<svg class="inline-block" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> <span>OK!</span>';
+                          setTimeout(() => {
+                            button.innerHTML = originalText;
+                          }, 2000);
+                        }
+                      } catch (err) {
+                        console.error('Erreur de synchronisation:', err);
                       }
-                    } catch (err) {
-                      console.error('Erreur de synchronisation:', err);
-                    }
-                  }}
-                  disabled={isLoadingModels}
+                    }}
+                    disabled={isLoadingModels}
                   className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-md transition-colors text-sm"
                   title="Actualiser la liste des modèles"
                 >
                   <FiRefreshCw className={isLoadingModels ? 'animate-spin' : ''} size={16} />
                   <span>{isLoadingModels ? 'Synchronisation...' : 'Actualiser'}</span>
                 </button>
+                </div>
               </div>
 
               <p className="text-sm text-gray-400 mb-4">
