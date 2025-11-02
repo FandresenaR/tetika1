@@ -117,6 +117,7 @@ class TradingViewChartController {
   /**
    * Ajouter un indicateur technique
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async addIndicator(indicatorName: string, inputs?: any): Promise<void> {
     if (!this.widgetInstance) {
       throw new Error('Widget non initialisé');
@@ -150,6 +151,7 @@ class TradingViewChartController {
     }
 
     const chart = this.widgetInstance.chart();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chart.getAllStudies().forEach((study: any) => {
       chart.removeEntity(study.id);
     });

@@ -5,6 +5,105 @@ Tous les changements notables apportés au projet Tetika seront documentés dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-11-02
+
+### 🐛 Corrections de bugs et améliorations
+
+#### Corrigé
+
+- **Duplicate React Keys (Modèles OpenRouter)**
+  - Suppression des doublons de modèles causés par la fusion de listes dynamiques et statiques
+  - `allModels` utilise maintenant uniquement les modèles dynamiques avec fallback sur les statiques
+  - Résolution des erreurs console "Encountered two children with the same key"
+
+- **TradingView Widget - Hydration Mismatch**
+  - Remplacement de `Math.random()` par `useState(() => Date.now())` pour ID unique
+  - ID stable entre le rendu serveur et client (fix hydration mismatch React)
+  - Ajout de `isMounted` state pour éviter le rendu SSR du widget
+  - Rendu conditionnel côté client uniquement avec message de chargement
+
+- **TradingView Widget - Erreurs de Chargement**
+  - Ajout de `setTimeout(100ms)` pour attendre que le DOM soit prêt
+  - Gestion d'erreur robuste avec `script.onerror` et `widget.onerror`
+  - Messages d'erreur informatifs affichés à l'utilisateur
+  - Vérification de `containerRef.current` avant création du widget
+  - Cleanup proper avec `clearTimeout` dans useEffect
+
+- **Symboles TradingView Plus Stables**
+  - Changement de `OANDA:XAUUSD` → `TVC:GOLD` (Or)
+  - Changement de `OANDA:WTICOUSD` → `TVC:USOIL` (Pétrole)
+  - Changement de `OANDA:XAGUSD` → `TVC:SILVER` (Argent)
+  - Utilisation de TradingView Composite (TVC:) au lieu de FOREX pour plus de fiabilité
+
+- **Configuration Widget TradingView Améliorée**
+  - Intervalle changé de `'15'` (15 minutes) à `'D'` (journalier) pour plus de stabilité
+  - Ajout de `studies_overrides: {}` et `overrides` pour configuration
+  - Suppression de `'save_chart_properties_to_local_storage'` (source d'erreurs)
+  - Délai indicateurs techniques augmenté de 1s à 2s
+  - Meilleur logging avec distinction warnings/errors
+  - Gestion gracieuse du cas où `chart()` API n'est pas disponible (widget gratuit)
+
+- **TypeScript/ESLint Build Errors**
+  - Ajout de `eslint-disable` pour `any` types justifiés dans chartController
+  - Correction des erreurs de build production
+
+#### Technique
+
+- Fix Next.js SSR hydration avec composant client-only
+- Amélioration de la gestion d'erreur asynchrone dans les useEffect
+- Dependencies exhaustives dans useEffect: `[tradingViewSymbol, theme, height, isSearching, isMounted, containerId]`
+
+---
+
+## [1.0.0] - 2025-11-02 🎉
+
+### 🚀 Milestone Majeure : Plateforme de Trading Intelligente
+
+#### Ajouté
+
+- **Page Trader Complète (`/trader`)**
+  - Interface de trading professionnelle avec TradingView
+  - Graphiques interactifs en temps réel (Advanced Charts Widget)
+  - Support de 8 actifs : Or (GLD), Pétrole (USO), Argent (SLV), AAPL, MSFT, TSLA, GOOGL, AMZN
+  - Sélecteur d'actifs avec recherche et catégorisation
+  - Thème dark/light adaptable
+
+- **Intégration TradingView**
+  - Widget Advanced Charts avec données en temps réel
+  - Indicateurs techniques : RSI(14), SMA(50), MACD(12,26,9)
+  - Symboles optimisés pour commodités et actions
+  - Intervalles configurables (journalier par défaut)
+  - Support multi-symboles avec cache intelligent
+
+- **Assistant Trading IA**
+  - Chat intégré avec sélection de modèles OpenRouter
+  - Analyse automatique de l'actif sélectionné
+  - Contexte enrichi : données de marché, news, indicateurs techniques
+  - Streaming des réponses en temps réel
+  - Support vision pour analyse de graphiques
+
+- **Données de Marché**
+  - API `/api/trading` pour récupération des données
+  - Prix en temps réel, variation, volume
+  - High/Low du jour
+  - Indicateurs techniques (RSI, MACD, SMA)
+  - News financières avec sentiment analysis
+
+- **ChartController Service**
+  - Contrôle programmatique du widget TradingView
+  - API pour changement de symbole dynamique
+  - Ajout/suppression d'indicateurs techniques
+  - Changement d'intervalles temporels
+  - Sauvegarde/restauration de configurations
+
+#### Technique
+
+- Architecture modulaire : TradingViewWidget, TradingChat, ChartController séparés
+- Integration complète avec l'écosystème OpenRouter
+- Support des modèles vision pour analyse de graphiques
+
+---
+
 ## [0.6.3] - 2025-10-22
 
 ### 🧹 Nettoyage Automatique des Modèles Obsolètes
