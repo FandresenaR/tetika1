@@ -6,6 +6,8 @@
 import { tradingSearchService } from './tradingSearchService';
 import { finnhubService } from './finnhubService';
 import { alphaVantageService } from './alphaVantageService';
+import { tradingViewSearchService } from './tradingViewSearchService';
+import { symbolCache } from './symbolCacheService';
 
 export interface ActionResult {
   success: boolean;
@@ -198,6 +200,330 @@ export class TradingAgentActions {
   }
 
   /**
+   * Sélectionner un actif à trader (permet à l'IA de changer d'actif)
+   */
+  async selectAsset(symbol: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] 🎯 Sélection de l'actif: ${symbol}`);
+      
+      const availableAssets = [
+        // ETF et actions
+        'GLD', 'USO', 'SLV', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'AMZN',
+        // Cryptos
+        'BITCOIN', 'BTC', 'ETHEREUM', 'ETH', 'DOGECOIN', 'DOGE',
+        'LITECOIN', 'LTC', 'RIPPLE', 'XRP', 'SOLANA', 'SOL',
+        'CARDANO', 'ADA'
+      ];
+      
+      // Vérifier avec normalisation
+      const normalizedSymbol = symbol.toUpperCase();
+      if (!availableAssets.includes(normalizedSymbol) && !availableAssets.includes(symbol)) {
+        return {
+          success: false,
+          actionType: 'select_asset',
+          error: `Symbole ${symbol} non disponible. Actifs disponibles: ${availableAssets.join(', ')}`
+        };
+      }
+
+      return {
+        success: true,
+        actionType: 'select_asset',
+        data: {
+          symbol: normalizedSymbol,
+          message: `Actif ${normalizedSymbol} sélectionné pour le trading`
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'select_asset',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+  /**
+   * Rechercher des symboles TradingView disponibles
+   * L'IA peut découvrir quels symboles existent vraiment
+   */
+  async searchTradingViewSymbol(query: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] 🔍 Recherche de symbole TradingView: ${query}`);
+      
+      const result = await tradingViewSearchService.searchSymbol(query);
+      
+      if (!result.found) {
+        return {
+          success: false,
+          actionType: 'search_tradingview_symbol',
+          error: `Aucun symbole trouvé pour: ${query}`
+        };
+      }
+
+      return {
+        success: true,
+        actionType: 'search_tradingview_symbol',
+        data: {
+          query,
+          symbolsFound: result.symbols.length,
+          symbols: result.symbols.map(s => ({
+            symbol: s.symbol,
+            description: s.description,
+            type: s.type,
+            exchange: s.exchange
+          }))
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'search_tradingview_symbol',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * Trouver le meilleur symbole TradingView pour un actif
+   */
+  async findBestTradingViewSymbol(assetName: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] 🎯 Recherche du meilleur symbole pour: ${assetName}`);
+      
+      const symbol = await tradingViewSearchService.findBestSymbol(assetName);
+      
+      if (!symbol) {
+        return {
+          success: false,
+          actionType: 'find_best_tradingview_symbol',
+          error: `Aucun symbole approprié trouvé pour: ${assetName}`
+        };
+      }
+
+      // Ajouter au cache pour utilisation future
+      symbolCache.add(assetName, symbol.symbol, symbol.description);
+
+      return {
+        success: true,
+        actionType: 'find_best_tradingview_symbol',
+        data: {
+          assetName,
+          bestSymbol: symbol.symbol,
+          description: symbol.description,
+          type: symbol.type,
+          exchange: symbol.exchange,
+          cached: true // Indique que le symbole a été mis en cache
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'find_best_tradingview_symbol',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * Ajouter un symbole au cache (pour que le widget puisse l'utiliser)
+   */
+  async addSymbolToCache(localSymbol: string, tradingViewSymbol: string, description?: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] 💾 Ajout au cache: ${localSymbol} → ${tradingViewSymbol}`);
+      
+      symbolCache.add(localSymbol, tradingViewSymbol, description || '');
+
+      return {
+        success: true,
+        actionType: 'add_symbol_to_cache',
+        data: {
+          localSymbol,
+          tradingViewSymbol,
+          message: `Symbole ${localSymbol} ajouté au cache et sera utilisé par le widget`
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'add_symbol_to_cache',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * Obtenir le cache des symboles
+   */
+  async getSymbolCache(): Promise<ActionResult> {
+    try {
+      const stats = symbolCache.stats();
+      const allSymbols = symbolCache.getAll();
+
+      return {
+        success: true,
+        actionType: 'get_symbol_cache',
+        data: {
+          cacheSize: stats.size,
+          symbols: allSymbols,
+          availableSymbols: stats.symbols
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'get_symbol_cache',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * ACTIONS DE CONTRÔLE DU GRAPHIQUE
+   * Permettent à l'IA de manipuler directement le graphique TradingView
+   */
+
+  /**
+   * Changer le symbole affiché sur le graphique
+   */
+  async changeChartSymbol(symbol: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] 📊 Changement du symbole du graphique: ${symbol}`);
+      
+      // Cette action sera exécutée côté client via un event
+      return {
+        success: true,
+        actionType: 'change_chart_symbol',
+        data: {
+          symbol,
+          message: `Graphique changé vers ${symbol}`
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'change_chart_symbol',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * Changer l'intervalle de temps du graphique
+   */
+  async changeChartInterval(interval: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] ⏱️ Changement d'intervalle: ${interval}`);
+      
+      return {
+        success: true,
+        actionType: 'change_chart_interval',
+        data: {
+          interval,
+          message: `Intervalle changé à ${interval}`
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'change_chart_interval',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * Ajouter un indicateur technique au graphique
+   */
+  async addChartIndicator(indicator: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] 📈 Ajout d'indicateur: ${indicator}`);
+      
+      const validIndicators = ['rsi', 'macd', 'sma', 'ema', 'bollinger', 'stochastic', 'volume'];
+      
+      if (!validIndicators.includes(indicator.toLowerCase())) {
+        return {
+          success: false,
+          actionType: 'add_chart_indicator',
+          error: `Indicateur ${indicator} non supporté. Disponibles: ${validIndicators.join(', ')}`
+        };
+      }
+
+      return {
+        success: true,
+        actionType: 'add_chart_indicator',
+        data: {
+          indicator,
+          message: `Indicateur ${indicator} ajouté au graphique`
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'add_chart_indicator',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * Changer le type de graphique
+   */
+  async changeChartType(type: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] 🎨 Changement de type de graphique: ${type}`);
+      
+      const validTypes = ['candles', 'line', 'area', 'bars'];
+      
+      if (!validTypes.includes(type.toLowerCase())) {
+        return {
+          success: false,
+          actionType: 'change_chart_type',
+          error: `Type ${type} non supporté. Disponibles: ${validTypes.join(', ')}`
+        };
+      }
+
+      return {
+        success: true,
+        actionType: 'change_chart_type',
+        data: {
+          type,
+          message: `Type de graphique changé à ${type}`
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'change_chart_type',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * Ajouter une alerte de prix
+   */
+  async addPriceAlert(price: number, message: string): Promise<ActionResult> {
+    try {
+      console.log(`[TradingAgent] 🔔 Ajout d'alerte à ${price}`);
+      
+      return {
+        success: true,
+        actionType: 'add_price_alert',
+        data: {
+          price,
+          message,
+          alertMessage: `Alerte ajoutée à ${price}: ${message}`
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        actionType: 'add_price_alert',
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
    * Exécuter une action en fonction du type
    */
   async executeAction(actionType: string, params: Record<string, unknown>): Promise<ActionResult> {
@@ -219,6 +545,41 @@ export class TradingAgentActions {
       
       case 'get_technical_indicators':
         return this.getTechnicalIndicators(params.symbol as string);
+      
+      case 'select_asset':
+        return this.selectAsset(params.symbol as string);
+      
+      case 'search_tradingview_symbol':
+        return this.searchTradingViewSymbol(params.query as string);
+      
+      case 'find_best_tradingview_symbol':
+        return this.findBestTradingViewSymbol(params.assetName as string);
+      
+      case 'add_symbol_to_cache':
+        return this.addSymbolToCache(
+          params.localSymbol as string,
+          params.tradingViewSymbol as string,
+          params.description as string | undefined
+        );
+      
+      case 'get_symbol_cache':
+        return this.getSymbolCache();
+      
+      // Actions de contrôle du graphique
+      case 'change_chart_symbol':
+        return this.changeChartSymbol(params.symbol as string);
+      
+      case 'change_chart_interval':
+        return this.changeChartInterval(params.interval as string);
+      
+      case 'add_chart_indicator':
+        return this.addChartIndicator(params.indicator as string);
+      
+      case 'change_chart_type':
+        return this.changeChartType(params.type as string);
+      
+      case 'add_price_alert':
+        return this.addPriceAlert(params.price as number, params.message as string);
       
       default:
         return {

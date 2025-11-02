@@ -6,9 +6,19 @@ import { tradingAgent } from '@/lib/services/tradingAgentActions';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, symbol, marketData, newsData, technicalIndicators, modelId } = body;
+    const { action, symbol: originalSymbol, marketData, newsData, technicalIndicators, modelId } = body;
 
-    console.log('[Trading API] Action:', action, 'Symbol:', symbol);
+    // Normaliser les symboles français vers leurs équivalents US
+    const symbolNormalization: Record<string, string> = {
+      'OR': 'GLD',  // Or → Gold ETF
+      'PETROLE': 'USO', // Pétrole → Oil ETF
+      'ARGENT': 'SLV', // Argent → Silver ETF
+    };
+
+    // Appliquer la normalisation si nécessaire
+    const symbol = symbolNormalization[originalSymbol?.toUpperCase()] || originalSymbol;
+
+    console.log('[Trading API] Action:', action, 'Symbol:', originalSymbol, 'Normalized:', symbol);
 
     switch (action) {
       case 'getMarketData': {
@@ -95,7 +105,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Construire le prompt avec toutes les données disponibles
-          const prompt = `Tu es un expert en trading et analyse financière. Analyse les données suivantes pour ${symbol}:
+          const prompt = `Tu es un expert en trading et analyse financière. Analyse les données suivantes pour ${symbol} (${originalSymbol}):
 
 **Données de marché:**
 - Prix actuel: ${marketData?.price || 'N/A'}
@@ -262,27 +272,61 @@ Réponds de manière concise, professionnelle et actionnable. Utilise des émoji
             throw new Error('Clé OpenRouter manquante');
           }
 
+          // Détecter les mots-clés qui nécessitent une recherche de symbole
+          const cryptoKeywords = ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'dogecoin', 'doge', 'litecoin', 'ltc', 'ripple', 'xrp'];
+          const needsSymbolSearch = cryptoKeywords.some(keyword => 
+            message.toLowerCase().includes(keyword)
+          );
+
           // Première étape : Déterminer si l'IA doit effectuer des actions
           const analysisSystemPrompt = `Tu es un assistant de trading IA expert avec accès à plusieurs outils.
 
 OUTILS DISPONIBLES:
-1. search_news - Rechercher des actualités récentes sur un actif
-2. search_analysis - Rechercher des analyses d'experts
-3. search_trends - Rechercher des tendances de marché générales
-4. search_symbol - Trouver le symbole d'une action par nom de société
-5. get_market_data - Obtenir des données de marché en temps réel
-6. get_technical_indicators - Calculer des indicateurs techniques
+
+📊 DONNÉES & RECHERCHE:
+1. search_news - Rechercher des actualités récentes sur un actif (params: {symbol, assetName?})
+2. search_analysis - Rechercher des analyses d'experts (params: {symbol})
+3. search_trends - Rechercher des tendances de marché générales (params: {query})
+4. search_symbol - Trouver le symbole d'une action par nom de société (params: {companyName})
+5. get_market_data - Obtenir des données de marché en temps réel (params: {symbol})
+6. get_technical_indicators - Calculer des indicateurs techniques (params: {symbol})
+
+🎯 GESTION D'ACTIFS:
+7. select_asset - Changer l'actif à trader (params: {symbol})
+8. search_tradingview_symbol - Rechercher des symboles disponibles sur TradingView (params: {query})
+9. find_best_tradingview_symbol - Trouver et METTRE EN CACHE le meilleur symbole TradingView (params: {assetName})
+
+📈 CONTRÔLE DU GRAPHIQUE:
+10. change_chart_symbol - Changer le symbole affiché sur le graphique (params: {symbol})
+11. change_chart_interval - Changer l'intervalle de temps (params: {interval}) - Valeurs: 1, 5, 15, 30, 60, 1D, 1W, 1M
+12. add_chart_indicator - Ajouter un indicateur technique (params: {indicator}) - Valeurs: rsi, macd, sma, ema, bollinger, stochastic, volume
+13. change_chart_type - Changer le type de graphique (params: {type}) - Valeurs: candles, line, area, bars
+14. add_price_alert - Ajouter une alerte de prix (params: {price, message})
+
+RÈGLES CRITIQUES - TU DOIS LES SUIVRE:
+❗ Si Bitcoin, BTC, Ethereum, ETH, crypto → UTILISE find_best_tradingview_symbol
+❗ Si l'utilisateur demande "montre", "affiche", "graphique" → UTILISE change_chart_symbol
+❗ Si l'utilisateur demande d'ajouter un indicateur (RSI, MACD, etc.) → UTILISE add_chart_indicator
+❗ Si l'utilisateur demande de changer l'intervalle (1h, 15m, etc.) → UTILISE change_chart_interval
+❗ Tu peux CONTRÔLER directement le graphique maintenant!
+
+ACTIFS CONNUS (pas besoin de recherche):
+- GLD, USO, SLV, AAPL, MSFT, TSLA, GOOGL, AMZN
+- BTC, ETH, DOGE, LTC, XRP, SOL, ADA (cryptos)
+
+WORKFLOW OBLIGATOIRE:
+1. Pour nouveaux symboles inconnus → utiliser find_best_tradingview_symbol d'abord
+2. Pour changer le graphique → utiliser change_chart_symbol
+3. Pour ajouter analyse technique → utiliser add_chart_indicator
 
 Contexte actuel:
 ${context}
 
-Si la question de l'utilisateur nécessite des informations à jour ou une recherche web, tu DOIS utiliser les outils.
+IMPORTANT: Analyse la question. Si elle contient "Bitcoin", "BTC", "crypto", "Ethereum", etc. → needs_tools DOIT être true!
 
-Analyse la question suivante et décide si tu as besoin d'utiliser des outils.
-
-Format de réponse:
-Si tu as besoin d'outils: {"needs_tools": true, "tools": [{"type": "search_news", "params": {"symbol": "GLD", "assetName": "Gold"}}]}
-Si tu peux répondre directement: {"needs_tools": false, "response": "Ta réponse ici"}
+Format de réponse STRICT:
+Si outils nécessaires: {"needs_tools": true, "tools": [{"type": "find_best_tradingview_symbol", "params": {"assetName": "Bitcoin"}}]}
+Si réponse directe OK: {"needs_tools": false, "response": "Ta réponse ici"}
 
 Question: ${message}`;
 
@@ -326,7 +370,32 @@ Question: ${message}`;
             needsTools = false;
           }
 
+          // FORCER l'utilisation de find_best_tradingview_symbol si crypto détectée et pas dans les outils
+          if (needsSymbolSearch && !toolsToExecute.some(t => t.type === 'find_best_tradingview_symbol')) {
+            console.log('[Trading API] 🔍 Crypto détectée, ajout forcé de find_best_tradingview_symbol');
+            
+            // Extraire le nom de la crypto du message
+            let cryptoName = 'Bitcoin'; // Par défaut
+            if (message.toLowerCase().includes('ethereum') || message.toLowerCase().includes('eth')) {
+              cryptoName = 'Ethereum';
+            } else if (message.toLowerCase().includes('dogecoin') || message.toLowerCase().includes('doge')) {
+              cryptoName = 'Dogecoin';
+            } else if (message.toLowerCase().includes('litecoin') || message.toLowerCase().includes('ltc')) {
+              cryptoName = 'Litecoin';
+            } else if (message.toLowerCase().includes('ripple') || message.toLowerCase().includes('xrp')) {
+              cryptoName = 'Ripple';
+            }
+
+            toolsToExecute.push({
+              type: 'find_best_tradingview_symbol',
+              params: { assetName: cryptoName }
+            });
+            needsTools = true;
+          }
+
           let toolResults = '';
+          let assetChanged = false;
+          let newAsset = '';
 
           // Exécuter les outils si nécessaire
           if (needsTools && toolsToExecute.length > 0) {
@@ -335,6 +404,13 @@ Question: ${message}`;
             const results = await Promise.all(
               toolsToExecute.map((tool) => tradingAgent.executeAction(tool.type, tool.params))
             );
+
+            // Vérifier si l'actif a été changé
+            const assetSelection = results.find(r => r.actionType === 'select_asset' && r.success);
+            if (assetSelection && assetSelection.data) {
+              assetChanged = true;
+              newAsset = (assetSelection.data as { symbol: string }).symbol;
+            }
 
             toolResults = results.map((result, index) => {
               if (result.success) {
@@ -352,6 +428,11 @@ Contexte actuel:
 ${context}
 
 ${toolResults ? `Résultats des recherches et analyses:\n${toolResults}` : ''}
+
+${needsSymbolSearch && toolsToExecute.some(t => t.type === 'find_best_tradingview_symbol') 
+  ? `\n⚠️ IMPORTANT: Tu viens de découvrir et mettre en cache un nouveau symbole TradingView. Mentionne EXPLICITEMENT dans ta réponse que le graphique va maintenant s'afficher avec le bon symbole.`
+  : ''
+}
 
 Utilise ces informations pour répondre de manière professionnelle et actionnable. Utilise des émojis pour améliorer la lisibilité.`;
 
@@ -392,7 +473,9 @@ Utilise ces informations pour répondre de manière professionnelle et actionnab
             model: modelId,
             timestamp: Date.now(),
             usedTools: needsTools,
-            toolsExecuted: toolsToExecute.length
+            toolsExecuted: toolsToExecute.length,
+            assetChanged,
+            newAsset: assetChanged ? newAsset : undefined
           });
         } catch (error) {
           console.error('[Trading API] Erreur smart chat:', error);

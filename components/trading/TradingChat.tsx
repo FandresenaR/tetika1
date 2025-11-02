@@ -12,6 +12,7 @@ interface TradingChatProps {
   models: Array<{ id: string; name: string; pricing?: { prompt: string } }>;
   selectedModel: string;
   onModelChange: (model: string) => void;
+  onAssetChange?: (symbol: string) => void; // Nouvelle prop pour changer d'actif
 }
 
 interface Message {
@@ -28,8 +29,29 @@ export default function TradingChat({
   technicalIndicators,
   models,
   selectedModel,
-  onModelChange
+  onModelChange,
+  onAssetChange
 }: TradingChatProps) {
+  // Mapping des noms d'actifs pour l'affichage
+  const getAssetDisplayName = (symbol: string): string => {
+    const assetNames: Record<string, string> = {
+      'GLD': '🪙 Or - SPDR Gold Trust (Gold ETF)',
+      'USO': '🛢️ Pétrole - WTI Crude Oil Futures',
+      'SLV': '🥈 Argent - iShares Silver Trust (Silver ETF)',
+      'AAPL': '📱 Apple Inc.',
+      'MSFT': '💻 Microsoft Corporation',
+      'TSLA': '🚗 Tesla Inc.',
+      'GOOGL': '🔍 Alphabet Inc. (Google)',
+      'AMZN': '📦 Amazon.com Inc.',
+      'BTC': '₿ Bitcoin',
+      'ETH': '⟠ Ethereum',
+      'DOGE': '🐕 Dogecoin',
+      'LTC': 'Ł Litecoin',
+      'XRP': '◎ Ripple (XRP)'
+    };
+    return assetNames[symbol] || `📊 ${symbol}`;
+  };
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -41,8 +63,13 @@ Je peux :
 🔎 Trouver des symboles boursiers
 💹 Obtenir des données de marché
 📈 Calculer des indicateurs techniques
+🎯 **CHANGER d'actif** si j'identifie une meilleure opportunité !
+🔬 **DÉCOUVRIR automatiquement** les symboles TradingView disponibles
+📉 **MANIPULER le graphique** (intervalles, indicateurs, alertes)
 
-Actuellement analysé : **${selectedAsset}**
+**Nouveau** : Je peux maintenant chercher et vérifier les symboles disponibles au lieu de deviner !
+
+**Actuellement analysé** : ${getAssetDisplayName(selectedAsset)}
 
 Posez-moi n'importe quelle question, je ferai les recherches nécessaires automatiquement !`,
       timestamp: new Date()
@@ -59,6 +86,38 @@ Posez-moi n'importe quelle question, je ferai les recherches nécessaires automa
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Mettre à jour le message initial quand l'actif change
+  useEffect(() => {
+    setMessages(prev => {
+      // Garder l'historique, juste mettre à jour le premier message si c'est le message de bienvenue
+      if (prev.length > 0 && prev[0].role === 'assistant' && prev[0].content.includes('Bonjour !')) {
+        const updatedMessages = [...prev];
+        updatedMessages[0] = {
+          ...updatedMessages[0],
+          content: `👋 Bonjour ! Je suis votre assistant de trading IA **avec capacités autonomes**.
+
+Je peux :
+🔍 Rechercher des actualités en temps réel
+📊 Analyser des tendances de marché
+🔎 Trouver des symboles boursiers
+💹 Obtenir des données de marché
+📈 Calculer des indicateurs techniques
+🎯 **CHANGER d'actif** si j'identifie une meilleure opportunité !
+🔬 **DÉCOUVRIR automatiquement** les symboles TradingView disponibles
+📉 **MANIPULER le graphique** (intervalles, indicateurs, alertes)
+
+**Nouveau** : Je peux maintenant chercher et vérifier les symboles disponibles au lieu de deviner !
+
+**Actuellement analysé** : ${getAssetDisplayName(selectedAsset)}
+
+Posez-moi n'importe quelle question, je ferai les recherches nécessaires automatiquement !`
+        };
+        return updatedMessages;
+      }
+      return prev;
+    });
+  }, [selectedAsset]);
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
@@ -105,6 +164,11 @@ ${newsData.slice(0, 3).map((news, i) => `${i + 1}. ${news.title}`).join('\n')}
       });
 
       const data = await response.json();
+
+      // Vérifier si l'IA a changé d'actif
+      if (data.assetChanged && onAssetChange) {
+        onAssetChange(data.newAsset);
+      }
 
       // Afficher si l'IA a utilisé des outils
       const responseContent = data.usedTools 

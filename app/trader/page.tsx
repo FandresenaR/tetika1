@@ -6,16 +6,87 @@ import { openRouterModels } from '@/lib/models';
 import TradingViewWidget from '@/components/trading/TradingViewWidget';
 import TradingChat from '@/components/trading/TradingChat';
 
+interface Asset {
+  symbol: string;
+  name: string;
+  description: string;
+  emoji: string;
+  category: string;
+}
+
+const AVAILABLE_ASSETS: Asset[] = [
+  {
+    symbol: 'GLD',
+    name: 'Or (Gold ETF)',
+    description: 'SPDR Gold Trust - ETF suivant le prix de l\'or',
+    emoji: '🪙',
+    category: 'Matières premières'
+  },
+  {
+    symbol: 'USO',
+    name: 'Pétrole (Oil Futures)',
+    description: 'WTI Crude Oil Futures - Contrats à terme sur le pétrole brut',
+    emoji: '🛢️',
+    category: 'Matières premières'
+  },
+  {
+    symbol: 'AAPL',
+    name: 'Apple Inc.',
+    description: 'Apple Inc. - Technologie',
+    emoji: '📱',
+    category: 'Technologie'
+  },
+  {
+    symbol: 'MSFT',
+    name: 'Microsoft',
+    description: 'Microsoft Corporation - Technologie',
+    emoji: '💻',
+    category: 'Technologie'
+  },
+  {
+    symbol: 'TSLA',
+    name: 'Tesla',
+    description: 'Tesla Inc. - Véhicules électriques',
+    emoji: '🚗',
+    category: 'Automobile'
+  },
+  {
+    symbol: 'GOOGL',
+    name: 'Google',
+    description: 'Alphabet Inc. - Technologie',
+    emoji: '🔍',
+    category: 'Technologie'
+  },
+  {
+    symbol: 'AMZN',
+    name: 'Amazon',
+    description: 'Amazon.com Inc. - E-commerce',
+    emoji: '📦',
+    category: 'E-commerce'
+  },
+  {
+    symbol: 'SLV',
+    name: 'Argent (Silver ETF)',
+    description: 'iShares Silver Trust - ETF suivant le prix de l\'argent',
+    emoji: '🥈',
+    category: 'Matières premières'
+  }
+];
+
 export default function TraderPage() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [selectedAsset, setSelectedAsset] = useState<'GLD' | 'USO' | 'AAPL'>('GLD');
+  const [selectedAsset, setSelectedAsset] = useState<string>('GLD');
+  const [showAssetSelector, setShowAssetSelector] = useState(false);
+  const [assetSearchQuery, setAssetSearchQuery] = useState('');
   const [marketData, setMarketData] = useState<{ price: string; change: string; volume: string; high: string; low: string } | null>(null);
   const [newsData, setNewsData] = useState<Array<{ title: string; snippet: string; datetime: number; sentiment?: string }>>([]);
   const [technicalIndicators, setTechnicalIndicators] = useState<{ rsi: string; macd: string; sma50: string } | null>(null);
   const [selectedModel, setSelectedModel] = useState('mistralai/mistral-7b-instruct:free');
   
   const { models: dynamicModels } = useOpenRouterModels();
-  const allModels = [...dynamicModels, ...openRouterModels];
+  // Utiliser uniquement les modèles dynamiques (API OpenRouter) pour éviter les doublons
+  // Les modèles statiques sont un fallback en cas d'échec du chargement dynamique
+  const allModels = dynamicModels.length > 0 ? dynamicModels : openRouterModels;
 
   useEffect(() => {
     // Charger les données initiales
@@ -76,11 +147,25 @@ export default function TraderPage() {
     }
   };
 
-  const assetNames: Record<string, string> = {
-    'GLD': '🪙 Or (SPDR Gold Trust ETF)',
-    'USO': '🛢️ Pétrole (US Oil Fund ETF)',
-    'AAPL': '📱 Apple Inc.'
+  const getAssetInfo = (symbol: string): Asset => {
+    // Normaliser les symboles français vers leurs équivalents US
+    const symbolNormalization: Record<string, string> = {
+      'OR': 'GLD',  // Or → Gold ETF
+      'PETROLE': 'USO', // Pétrole → Oil ETF
+      'ARGENT': 'SLV', // Argent → Silver ETF
+    };
+    
+    const normalizedSymbol = symbolNormalization[symbol?.toUpperCase()] || symbol;
+    return AVAILABLE_ASSETS.find(a => a.symbol === normalizedSymbol) || AVAILABLE_ASSETS[0];
   };
+
+  const filteredAssets = AVAILABLE_ASSETS.filter(asset =>
+    asset.symbol.toLowerCase().includes(assetSearchQuery.toLowerCase()) ||
+    asset.name.toLowerCase().includes(assetSearchQuery.toLowerCase()) ||
+    asset.description.toLowerCase().includes(assetSearchQuery.toLowerCase())
+  );
+
+  const currentAsset = getAssetInfo(selectedAsset);
 
   const themeClasses = theme === 'dark'
     ? 'bg-gray-900 text-white'
@@ -141,28 +226,107 @@ export default function TraderPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Market Data & Charts */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Asset Selector */}
+            {/* Asset Selector avec recherche */}
             <div className={`rounded-lg p-4 ${
               theme === 'dark' ? 'bg-gray-800' : 'bg-white'
             } shadow-lg`}>
-              <h2 className="text-lg font-semibold mb-3">Sélectionner un actif</h2>
-              <div className="flex gap-3">
-                {(['GLD', 'USO', 'AAPL'] as const).map((asset) => (
-                  <button
-                    key={asset}
-                    onClick={() => setSelectedAsset(asset)}
-                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
-                      selectedAsset === asset
-                        ? 'bg-gradient-to-r from-yellow-500 to-amber-600 text-white shadow-lg scale-105'
-                        : theme === 'dark'
-                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    {assetNames[asset]}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold">Actif sélectionné</h2>
+                <button
+                  onClick={() => setShowAssetSelector(!showAssetSelector)}
+                  className={`px-4 py-2 rounded-lg transition-all ${
+                    theme === 'dark'
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {showAssetSelector ? '✕ Fermer' : '🔍 Changer d\'actif'}
+                </button>
               </div>
+
+              {/* Actif actuel */}
+              <div className={`p-4 rounded-lg mb-3 ${
+                theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-4xl">{currentAsset.emoji}</span>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold">{currentAsset.symbol}</h3>
+                    <p className="text-sm font-medium">{currentAsset.name}</p>
+                    <p className="text-xs text-gray-500">{currentAsset.description}</p>
+                    <span className={`inline-block mt-1 px-2 py-1 text-xs rounded ${
+                      theme === 'dark' ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {currentAsset.category}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Panneau de sélection */}
+              {showAssetSelector && (
+                <div className={`border-t pt-4 ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+                  {/* Barre de recherche */}
+                  <input
+                    type="text"
+                    placeholder="Rechercher un actif..."
+                    value={assetSearchQuery}
+                    onChange={(e) => setAssetSearchQuery(e.target.value)}
+                    className={`w-full px-4 py-2 rounded-lg mb-3 ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 text-white placeholder-gray-400'
+                        : 'bg-gray-100 text-gray-800 placeholder-gray-500'
+                    }`}
+                  />
+
+                  {/* Liste des actifs */}
+                  <div className="max-h-96 overflow-y-auto space-y-2">
+                    {filteredAssets.map((asset) => (
+                      <button
+                        key={asset.symbol}
+                        onClick={() => {
+                          setSelectedAsset(asset.symbol);
+                          setShowAssetSelector(false);
+                          setAssetSearchQuery('');
+                        }}
+                        className={`w-full p-3 rounded-lg text-left transition-all ${
+                          selectedAsset === asset.symbol
+                            ? 'bg-gradient-to-r from-yellow-500 to-amber-600 text-white'
+                            : theme === 'dark'
+                            ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                            : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{asset.emoji}</span>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold">{asset.symbol}</span>
+                              <span className="text-sm opacity-80">{asset.name}</span>
+                            </div>
+                            <p className="text-xs opacity-70 mt-1">{asset.description}</p>
+                            <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded ${
+                              selectedAsset === asset.symbol
+                                ? 'bg-white/20'
+                                : theme === 'dark'
+                                ? 'bg-gray-600 text-gray-300'
+                                : 'bg-gray-200 text-gray-600'
+                            }`}>
+                              {asset.category}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {filteredAssets.length === 0 && (
+                    <p className="text-center text-gray-500 py-4">
+                      Aucun actif trouvé pour &quot;{assetSearchQuery}&quot;
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* TradingView Chart */}
@@ -170,7 +334,7 @@ export default function TraderPage() {
               theme === 'dark' ? 'bg-gray-800' : 'bg-white'
             } shadow-lg`}>
               <h2 className="text-lg font-semibold mb-3">
-                📊 Graphique {assetNames[selectedAsset]}
+                📊 Graphique {currentAsset.emoji} {currentAsset.name}
               </h2>
               <TradingViewWidget 
                 symbol={selectedAsset}
@@ -217,7 +381,14 @@ export default function TraderPage() {
               <div className={`rounded-lg p-4 ${
                 theme === 'dark' ? 'bg-gray-800' : 'bg-white'
               } shadow-lg`}>
-                <h2 className="text-lg font-semibold mb-3">Données de marché en temps réel</h2>
+                <div className="mb-3">
+                  <h2 className="text-lg font-semibold">Données de marché en temps réel</h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {selectedAsset === 'GLD' && 'SPDR Gold Trust - ETF suivant le prix de l\'or'}
+                    {selectedAsset === 'USO' && 'United States Oil Fund - ETF suivant le prix du pétrole WTI'}
+                    {selectedAsset === 'AAPL' && 'Apple Inc. - Technologie'}
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-sm text-gray-500">Prix actuel</p>
@@ -294,6 +465,10 @@ export default function TraderPage() {
                 models={allModels}
                 selectedModel={selectedModel}
                 onModelChange={setSelectedModel}
+                onAssetChange={(newSymbol) => {
+                  console.log(`🎯 L'IA change l'actif vers: ${newSymbol}`);
+                  setSelectedAsset(newSymbol);
+                }}
               />
             </div>
 
